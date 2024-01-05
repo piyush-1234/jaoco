@@ -1,0 +1,528 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RedundantModifierCheck.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.checks.modifier</a> &gt; <span class="el_source">RedundantModifierCheck.java</span></div><h1>RedundantModifierCheck.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.checks.modifier;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+import com.puppycrawl.tools.checkstyle.StatelessCheck;
+import com.puppycrawl.tools.checkstyle.api.AbstractCheck;
+import com.puppycrawl.tools.checkstyle.api.DetailAST;
+import com.puppycrawl.tools.checkstyle.api.TokenTypes;
+import com.puppycrawl.tools.checkstyle.utils.CommonUtil;
+import com.puppycrawl.tools.checkstyle.utils.TokenUtil;
+
+/**
+ * &lt;p&gt;
+ * Checks for redundant modifiers.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Rationale: The Java Language Specification strongly discourages the usage
+ * of {@code public} and {@code abstract} for method declarations in interface
+ * definitions as a matter of style.
+ * &lt;/p&gt;
+ * &lt;p&gt;The check validates:&lt;/p&gt;
+ * &lt;ol&gt;
+ * &lt;li&gt;
+ * Interface and annotation definitions.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Final modifier on methods of final and anonymous classes.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Type declarations nested under interfaces that are declared as {@code public} or {@code static}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Class constructors.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Nested {@code enum} definitions that are declared as {@code static}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * {@code record} definitions that are declared as {@code final} and nested
+ * {@code record} definitions that are declared as {@code static}.
+ * &lt;/li&gt;
+ * &lt;/ol&gt;
+ * &lt;p&gt;
+ * interfaces by definition are abstract so the {@code abstract} modifier is redundant on them.
+ * &lt;/p&gt;
+ * &lt;p&gt;Type declarations nested under interfaces by definition are public and static,
+ * so the {@code public} and {@code static} modifiers on nested type declarations are redundant.
+ * On the other hand, classes inside of interfaces can be abstract or non abstract.
+ * So, {@code abstract} modifier is allowed.
+ * &lt;/p&gt;
+ * &lt;p&gt;Fields in interfaces and annotations are automatically
+ * public, static and final, so these modifiers are redundant as
+ * well.&lt;/p&gt;
+ *
+ * &lt;p&gt;As annotations are a form of interface, their fields are also
+ * automatically public, static and final just as their
+ * annotation fields are automatically public and abstract.&lt;/p&gt;
+ *
+ * &lt;p&gt;A record class is implicitly final and cannot be abstract, these restrictions emphasize
+ * that the API of a record class is defined solely by its state description, and
+ * cannot be enhanced later by another class. Nested records are implicitly static. This avoids an
+ * immediately enclosing instance which would silently add state to the record class.
+ * See &lt;a href=&quot;https://openjdk.org/jeps/395&quot;&gt;JEP 395&lt;/a&gt; for more info.&lt;/p&gt;
+ *
+ * &lt;p&gt;Enums by definition are static implicit subclasses of java.lang.Enum&amp;#60;E&amp;#62;.
+ * So, the {@code static} modifier on the enums is redundant. In addition,
+ * if enum is inside of interface, {@code public} modifier is also redundant.&lt;/p&gt;
+ *
+ * &lt;p&gt;Enums can also contain abstract methods and methods which can be overridden by the declared
+ * enumeration fields.
+ * See the following example:&lt;/p&gt;
+ * &lt;pre&gt;
+ * public enum EnumClass {
+ *   FIELD_1,
+ *   FIELD_2 {
+ *     &amp;#64;Override
+ *     public final void method1() {} // violation expected
+ *   };
+ *
+ *   public void method1() {}
+ *   public final void method2() {} // no violation expected
+ * }
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;Since these methods can be overridden in these situations, the final methods are not
+ * marked as redundant even though they can't be extended by other classes/enums.&lt;/p&gt;
+ * &lt;p&gt;
+ * Nested {@code enum} types are always static by default.
+ * &lt;/p&gt;
+ * &lt;p&gt;Final classes by definition cannot be extended so the {@code final}
+ * modifier on the method of a final class is redundant.
+ * &lt;/p&gt;
+ * &lt;p&gt;Public modifier for constructors in non-public non-protected classes
+ * is always obsolete: &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * public class PublicClass {
+ *   public PublicClass() {} // OK
+ * }
+ *
+ * class PackagePrivateClass {
+ *   public PackagePrivateClass() {} // violation expected
+ * }
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;There is no violation in the following example,
+ * because removing public modifier from ProtectedInnerClass
+ * constructor will make this code not compiling: &lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * package a;
+ * public class ClassExample {
+ *   protected class ProtectedInnerClass {
+ *     public ProtectedInnerClass () {}
+ *   }
+ * }
+ *
+ * package b;
+ * import a.ClassExample;
+ * public class ClassExtending extends ClassExample {
+ *   ProtectedInnerClass pc = new ProtectedInnerClass();
+ * }
+ * &lt;/pre&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * Property {@code tokens} - tokens to check
+ * Type is {@code java.lang.String[]}.
+ * Validation type is {@code tokenSet}.
+ * Default value is:
+ * &lt;a href=&quot;https://checkstyle.org/apidocs/com/puppycrawl/tools/checkstyle/api/TokenTypes.html#METHOD_DEF&quot;&gt;
+ * METHOD_DEF&lt;/a&gt;,
+ * &lt;a href=&quot;https://checkstyle.org/apidocs/com/puppycrawl/tools/checkstyle/api/TokenTypes.html#VARIABLE_DEF&quot;&gt;
+ * VARIABLE_DEF&lt;/a&gt;,
+ * &lt;a href=&quot;https://checkstyle.org/apidocs/com/puppycrawl/tools/checkstyle/api/TokenTypes.html#ANNOTATION_FIELD_DEF&quot;&gt;
+ * ANNOTATION_FIELD_DEF&lt;/a&gt;,
+ * &lt;a href=&quot;https://checkstyle.org/apidocs/com/puppycrawl/tools/checkstyle/api/TokenTypes.html#INTERFACE_DEF&quot;&gt;
+ * INTERFACE_DEF&lt;/a&gt;,
+ * &lt;a href=&quot;https://checkstyle.org/apidocs/com/puppycrawl/tools/checkstyle/api/TokenTypes.html#CTOR_DEF&quot;&gt;
+ * CTOR_DEF&lt;/a&gt;,
+ * &lt;a href=&quot;https://checkstyle.org/apidocs/com/puppycrawl/tools/checkstyle/api/TokenTypes.html#CLASS_DEF&quot;&gt;
+ * CLASS_DEF&lt;/a&gt;,
+ * &lt;a href=&quot;https://checkstyle.org/apidocs/com/puppycrawl/tools/checkstyle/api/TokenTypes.html#ENUM_DEF&quot;&gt;
+ * ENUM_DEF&lt;/a&gt;,
+ * &lt;a href=&quot;https://checkstyle.org/apidocs/com/puppycrawl/tools/checkstyle/api/TokenTypes.html#RESOURCE&quot;&gt;
+ * RESOURCE&lt;/a&gt;,
+ * &lt;a href=&quot;https://checkstyle.org/apidocs/com/puppycrawl/tools/checkstyle/api/TokenTypes.html#ANNOTATION_DEF&quot;&gt;
+ * ANNOTATION_DEF&lt;/a&gt;,
+ * &lt;a href=&quot;https://checkstyle.org/apidocs/com/puppycrawl/tools/checkstyle/api/TokenTypes.html#RECORD_DEF&quot;&gt;
+ * RECORD_DEF&lt;/a&gt;.
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Parent is {@code com.puppycrawl.tools.checkstyle.TreeWalker}
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Violation Message Keys:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * {@code redundantModifier}
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * @since 3.0
+ */
+@StatelessCheck
+<span class="fc" id="L188">public class RedundantModifierCheck</span>
+    extends AbstractCheck {
+
+    /**
+     * A key is pointing to the warning message text in &quot;messages.properties&quot;
+     * file.
+     */
+    public static final String MSG_KEY = &quot;redundantModifier&quot;;
+
+    /**
+     * An array of tokens for interface modifiers.
+     */
+<span class="fc" id="L200">    private static final int[] TOKENS_FOR_INTERFACE_MODIFIERS = {</span>
+        TokenTypes.LITERAL_STATIC,
+        TokenTypes.ABSTRACT,
+    };
+
+    @Override
+    public int[] getDefaultTokens() {
+<span class="fc" id="L207">        return getAcceptableTokens();</span>
+    }
+
+    @Override
+    public int[] getRequiredTokens() {
+<span class="fc" id="L212">        return CommonUtil.EMPTY_INT_ARRAY;</span>
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+<span class="fc" id="L217">        return new int[] {</span>
+            TokenTypes.METHOD_DEF,
+            TokenTypes.VARIABLE_DEF,
+            TokenTypes.ANNOTATION_FIELD_DEF,
+            TokenTypes.INTERFACE_DEF,
+            TokenTypes.CTOR_DEF,
+            TokenTypes.CLASS_DEF,
+            TokenTypes.ENUM_DEF,
+            TokenTypes.RESOURCE,
+            TokenTypes.ANNOTATION_DEF,
+            TokenTypes.RECORD_DEF,
+        };
+    }
+
+    @Override
+    public void visitToken(DetailAST ast) {
+<span class="fc bfc" id="L233" title="All 8 branches covered.">        switch (ast.getType()) {</span>
+            case TokenTypes.INTERFACE_DEF:
+            case TokenTypes.ANNOTATION_DEF:
+<span class="fc" id="L236">                checkInterfaceModifiers(ast);</span>
+<span class="fc" id="L237">                break;</span>
+            case TokenTypes.ENUM_DEF:
+<span class="fc" id="L239">                checkForRedundantModifier(ast, TokenTypes.LITERAL_STATIC);</span>
+<span class="fc" id="L240">                break;</span>
+            case TokenTypes.CTOR_DEF:
+<span class="fc" id="L242">                checkConstructorModifiers(ast);</span>
+<span class="fc" id="L243">                break;</span>
+            case TokenTypes.METHOD_DEF:
+<span class="fc" id="L245">                processMethods(ast);</span>
+<span class="fc" id="L246">                break;</span>
+            case TokenTypes.RESOURCE:
+<span class="fc" id="L248">                processResources(ast);</span>
+<span class="fc" id="L249">                break;</span>
+            case TokenTypes.RECORD_DEF:
+<span class="fc" id="L251">                checkForRedundantModifier(ast, TokenTypes.FINAL, TokenTypes.LITERAL_STATIC);</span>
+<span class="fc" id="L252">                break;</span>
+            case TokenTypes.CLASS_DEF:
+            case TokenTypes.VARIABLE_DEF:
+            case TokenTypes.ANNOTATION_FIELD_DEF:
+<span class="fc" id="L256">                break;</span>
+            default:
+<span class="fc" id="L258">                throw new IllegalStateException(&quot;Unexpected token type: &quot; + ast.getType());</span>
+        }
+
+<span class="fc bfc" id="L261" title="All 2 branches covered.">        if (isInterfaceOrAnnotationMember(ast)) {</span>
+<span class="fc" id="L262">            processInterfaceOrAnnotation(ast);</span>
+        }
+<span class="fc" id="L264">    }</span>
+
+    /**
+     * Check modifiers of constructor.
+     *
+     * @param ctorDefAst ast node of type {@link TokenTypes#CTOR_DEF}
+     */
+    private void checkConstructorModifiers(DetailAST ctorDefAst) {
+<span class="fc bfc" id="L272" title="All 2 branches covered.">        if (isEnumMember(ctorDefAst)) {</span>
+<span class="fc" id="L273">            checkEnumConstructorModifiers(ctorDefAst);</span>
+        }
+        else {
+<span class="fc" id="L276">            checkClassConstructorModifiers(ctorDefAst);</span>
+        }
+<span class="fc" id="L278">    }</span>
+
+    /**
+     * Checks if interface has proper modifiers.
+     *
+     * @param ast interface to check
+     */
+    private void checkInterfaceModifiers(DetailAST ast) {
+<span class="fc" id="L286">        final DetailAST modifiers =</span>
+<span class="fc" id="L287">            ast.findFirstToken(TokenTypes.MODIFIERS);</span>
+
+<span class="fc bfc" id="L289" title="All 2 branches covered.">        for (final int tokenType : TOKENS_FOR_INTERFACE_MODIFIERS) {</span>
+<span class="fc" id="L290">            final DetailAST modifier =</span>
+<span class="fc" id="L291">                    modifiers.findFirstToken(tokenType);</span>
+<span class="fc bfc" id="L292" title="All 2 branches covered.">            if (modifier != null) {</span>
+<span class="fc" id="L293">                log(modifier, MSG_KEY, modifier.getText());</span>
+            }
+        }
+<span class="fc" id="L296">    }</span>
+
+    /**
+     * Check if enum constructor has proper modifiers.
+     *
+     * @param ast constructor of enum
+     */
+    private void checkEnumConstructorModifiers(DetailAST ast) {
+<span class="fc" id="L304">        final DetailAST modifiers = ast.findFirstToken(TokenTypes.MODIFIERS);</span>
+<span class="fc" id="L305">        TokenUtil.findFirstTokenByPredicate(</span>
+<span class="fc bfc" id="L306" title="All 2 branches covered.">            modifiers, mod -&gt; mod.getType() != TokenTypes.ANNOTATION</span>
+<span class="fc" id="L307">        ).ifPresent(modifier -&gt; log(modifier, MSG_KEY, modifier.getText()));</span>
+<span class="fc" id="L308">    }</span>
+
+    /**
+     * Do validation of interface of annotation.
+     *
+     * @param ast token AST
+     */
+    private void processInterfaceOrAnnotation(DetailAST ast) {
+<span class="fc" id="L316">        final DetailAST modifiers = ast.findFirstToken(TokenTypes.MODIFIERS);</span>
+<span class="fc" id="L317">        DetailAST modifier = modifiers.getFirstChild();</span>
+<span class="fc bfc" id="L318" title="All 2 branches covered.">        while (modifier != null) {</span>
+            // javac does not allow final or static in interface methods
+            // order annotation fields hence no need to check that this
+            // is not a method or annotation field
+
+<span class="fc" id="L323">            final int type = modifier.getType();</span>
+<span class="fc bfc" id="L324" title="All 4 branches covered.">            if (type == TokenTypes.LITERAL_PUBLIC</span>
+                || type == TokenTypes.LITERAL_STATIC
+<span class="fc bfc" id="L326" title="All 4 branches covered.">                        &amp;&amp; ast.getType() != TokenTypes.METHOD_DEF</span>
+                || type == TokenTypes.ABSTRACT
+<span class="fc bfc" id="L328" title="All 4 branches covered.">                        &amp;&amp; ast.getType() != TokenTypes.CLASS_DEF</span>
+                || type == TokenTypes.FINAL
+<span class="fc bfc" id="L330" title="All 2 branches covered.">                        &amp;&amp; ast.getType() != TokenTypes.CLASS_DEF) {</span>
+<span class="fc" id="L331">                log(modifier, MSG_KEY, modifier.getText());</span>
+            }
+
+<span class="fc" id="L334">            modifier = modifier.getNextSibling();</span>
+<span class="fc" id="L335">        }</span>
+<span class="fc" id="L336">    }</span>
+
+    /**
+     * Process validation of Methods.
+     *
+     * @param ast method AST
+     */
+    private void processMethods(DetailAST ast) {
+<span class="fc" id="L344">        final DetailAST modifiers =</span>
+<span class="fc" id="L345">                        ast.findFirstToken(TokenTypes.MODIFIERS);</span>
+        // private method?
+<span class="fc" id="L347">        boolean checkFinal =</span>
+<span class="fc bfc" id="L348" title="All 2 branches covered.">            modifiers.findFirstToken(TokenTypes.LITERAL_PRIVATE) != null;</span>
+        // declared in a final class?
+<span class="fc" id="L350">        DetailAST parent = ast;</span>
+<span class="fc bfc" id="L351" title="All 4 branches covered.">        while (parent != null &amp;&amp; !checkFinal) {</span>
+<span class="fc bfc" id="L352" title="All 2 branches covered.">            if (parent.getType() == TokenTypes.CLASS_DEF) {</span>
+<span class="fc" id="L353">                final DetailAST classModifiers =</span>
+<span class="fc" id="L354">                    parent.findFirstToken(TokenTypes.MODIFIERS);</span>
+<span class="fc bfc" id="L355" title="All 2 branches covered.">                checkFinal = classModifiers.findFirstToken(TokenTypes.FINAL) != null;</span>
+<span class="fc" id="L356">                parent = null;</span>
+<span class="fc" id="L357">            }</span>
+<span class="fc bfc" id="L358" title="All 2 branches covered.">            else if (parent.getType() == TokenTypes.LITERAL_NEW</span>
+<span class="fc bfc" id="L359" title="All 2 branches covered.">                    || parent.getType() == TokenTypes.ENUM_CONSTANT_DEF) {</span>
+<span class="fc" id="L360">                checkFinal = true;</span>
+<span class="fc" id="L361">                parent = null;</span>
+            }
+<span class="fc bfc" id="L363" title="All 2 branches covered.">            else if (parent.getType() == TokenTypes.ENUM_DEF) {</span>
+<span class="fc bfc" id="L364" title="All 2 branches covered.">                checkFinal = modifiers.findFirstToken(TokenTypes.LITERAL_STATIC) != null;</span>
+<span class="fc" id="L365">                parent = null;</span>
+            }
+            else {
+<span class="fc" id="L368">                parent = parent.getParent();</span>
+            }
+        }
+<span class="fc bfc" id="L371" title="All 4 branches covered.">        if (checkFinal &amp;&amp; !isAnnotatedWithSafeVarargs(ast)) {</span>
+<span class="fc" id="L372">            checkForRedundantModifier(ast, TokenTypes.FINAL);</span>
+        }
+
+<span class="fc bfc" id="L375" title="All 2 branches covered.">        if (ast.findFirstToken(TokenTypes.SLIST) == null) {</span>
+<span class="fc" id="L376">            processAbstractMethodParameters(ast);</span>
+        }
+<span class="fc" id="L378">    }</span>
+
+    /**
+     * Process validation of parameters for Methods with no definition.
+     *
+     * @param ast method AST
+     */
+    private void processAbstractMethodParameters(DetailAST ast) {
+<span class="fc" id="L386">        final DetailAST parameters = ast.findFirstToken(TokenTypes.PARAMETERS);</span>
+<span class="fc" id="L387">        TokenUtil.forEachChild(parameters, TokenTypes.PARAMETER_DEF, paramDef -&gt; {</span>
+<span class="fc" id="L388">            checkForRedundantModifier(paramDef, TokenTypes.FINAL);</span>
+<span class="fc" id="L389">        });</span>
+<span class="fc" id="L390">    }</span>
+
+    /**
+     * Check if class constructor has proper modifiers.
+     *
+     * @param classCtorAst class constructor ast
+     */
+    private void checkClassConstructorModifiers(DetailAST classCtorAst) {
+<span class="fc" id="L398">        final DetailAST classDef = classCtorAst.getParent().getParent();</span>
+<span class="fc bfc" id="L399" title="All 4 branches covered.">        if (!isClassPublic(classDef) &amp;&amp; !isClassProtected(classDef)) {</span>
+<span class="fc" id="L400">            checkForRedundantModifier(classCtorAst, TokenTypes.LITERAL_PUBLIC);</span>
+        }
+<span class="fc" id="L402">    }</span>
+
+    /**
+     * Checks if given resource has redundant modifiers.
+     *
+     * @param ast ast
+     */
+    private void processResources(DetailAST ast) {
+<span class="fc" id="L410">        checkForRedundantModifier(ast, TokenTypes.FINAL);</span>
+<span class="fc" id="L411">    }</span>
+
+    /**
+     * Checks if given ast has a redundant modifier.
+     *
+     * @param ast ast
+     * @param modifierTypes The modifiers to check for.
+     */
+    private void checkForRedundantModifier(DetailAST ast, int... modifierTypes) {
+<span class="fc" id="L420">        Optional.ofNullable(ast.findFirstToken(TokenTypes.MODIFIERS))</span>
+<span class="fc" id="L421">            .ifPresent(modifiers -&gt; {</span>
+<span class="fc" id="L422">                for (DetailAST childAst = modifiers.getFirstChild();</span>
+<span class="fc bfc" id="L423" title="All 2 branches covered.">                     childAst != null; childAst = childAst.getNextSibling()) {</span>
+<span class="fc bfc" id="L424" title="All 2 branches covered.">                    if (TokenUtil.isOfType(childAst, modifierTypes)) {</span>
+<span class="fc" id="L425">                        log(childAst, MSG_KEY, childAst.getText());</span>
+                    }
+                }
+<span class="fc" id="L428">            });</span>
+<span class="fc" id="L429">    }</span>
+
+    /**
+     * Checks if given class ast has protected modifier.
+     *
+     * @param classDef class ast
+     * @return true if class is protected, false otherwise
+     */
+    private static boolean isClassProtected(DetailAST classDef) {
+<span class="fc" id="L438">        final DetailAST classModifiers =</span>
+<span class="fc" id="L439">                classDef.findFirstToken(TokenTypes.MODIFIERS);</span>
+<span class="fc bfc" id="L440" title="All 2 branches covered.">        return classModifiers.findFirstToken(TokenTypes.LITERAL_PROTECTED) != null;</span>
+    }
+
+    /**
+     * Checks if given class is accessible from &quot;public&quot; scope.
+     *
+     * @param ast class def to check
+     * @return true if class is accessible from public scope,false otherwise
+     */
+    private static boolean isClassPublic(DetailAST ast) {
+<span class="fc" id="L450">        boolean isAccessibleFromPublic = false;</span>
+<span class="fc" id="L451">        final DetailAST modifiersAst = ast.findFirstToken(TokenTypes.MODIFIERS);</span>
+<span class="fc" id="L452">        final boolean hasPublicModifier =</span>
+<span class="fc bfc" id="L453" title="All 2 branches covered.">                modifiersAst.findFirstToken(TokenTypes.LITERAL_PUBLIC) != null;</span>
+
+<span class="fc bfc" id="L455" title="All 2 branches covered.">        if (TokenUtil.isRootNode(ast.getParent())) {</span>
+<span class="fc" id="L456">            isAccessibleFromPublic = hasPublicModifier;</span>
+        }
+        else {
+<span class="fc" id="L459">            final DetailAST parentClassAst = ast.getParent().getParent();</span>
+
+<span class="fc bfc" id="L461" title="All 4 branches covered.">            if (hasPublicModifier || parentClassAst.getType() == TokenTypes.INTERFACE_DEF) {</span>
+<span class="fc" id="L462">                isAccessibleFromPublic = isClassPublic(parentClassAst);</span>
+            }
+        }
+
+<span class="fc" id="L466">        return isAccessibleFromPublic;</span>
+    }
+
+    /**
+     * Checks if current AST node is member of Enum.
+     *
+     * @param ast AST node
+     * @return true if it is an enum member
+     */
+    private static boolean isEnumMember(DetailAST ast) {
+<span class="fc" id="L476">        final DetailAST parentTypeDef = ast.getParent().getParent();</span>
+<span class="fc bfc" id="L477" title="All 2 branches covered.">        return parentTypeDef.getType() == TokenTypes.ENUM_DEF;</span>
+    }
+
+    /**
+     * Checks if current AST node is member of Interface or Annotation, not of their subnodes.
+     *
+     * @param ast AST node
+     * @return true or false
+     */
+    private static boolean isInterfaceOrAnnotationMember(DetailAST ast) {
+<span class="fc" id="L487">        DetailAST parentTypeDef = ast.getParent();</span>
+<span class="fc" id="L488">        parentTypeDef = parentTypeDef.getParent();</span>
+<span class="fc bfc" id="L489" title="All 2 branches covered.">        return parentTypeDef != null</span>
+<span class="fc bfc" id="L490" title="All 2 branches covered.">                &amp;&amp; (parentTypeDef.getType() == TokenTypes.INTERFACE_DEF</span>
+<span class="fc bfc" id="L491" title="All 2 branches covered.">                    || parentTypeDef.getType() == TokenTypes.ANNOTATION_DEF);</span>
+    }
+
+    /**
+     * Checks if method definition is annotated with.
+     * &lt;a href=&quot;https://docs.oracle.com/javase/8/docs/api/java/lang/SafeVarargs.html&quot;&gt;
+     * SafeVarargs&lt;/a&gt; annotation
+     *
+     * @param methodDef method definition node
+     * @return true or false
+     */
+    private static boolean isAnnotatedWithSafeVarargs(DetailAST methodDef) {
+<span class="fc" id="L503">        boolean result = false;</span>
+<span class="fc" id="L504">        final List&lt;DetailAST&gt; methodAnnotationsList = getMethodAnnotationsList(methodDef);</span>
+<span class="fc bfc" id="L505" title="All 2 branches covered.">        for (DetailAST annotationNode : methodAnnotationsList) {</span>
+<span class="fc bfc" id="L506" title="All 2 branches covered.">            if (&quot;SafeVarargs&quot;.equals(annotationNode.getLastChild().getText())) {</span>
+<span class="fc" id="L507">                result = true;</span>
+<span class="fc" id="L508">                break;</span>
+            }
+<span class="fc" id="L510">        }</span>
+<span class="fc" id="L511">        return result;</span>
+    }
+
+    /**
+     * Gets the list of annotations on method definition.
+     *
+     * @param methodDef method definition node
+     * @return List of annotations
+     */
+    private static List&lt;DetailAST&gt; getMethodAnnotationsList(DetailAST methodDef) {
+<span class="fc" id="L521">        final List&lt;DetailAST&gt; annotationsList = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L522">        final DetailAST modifiers = methodDef.findFirstToken(TokenTypes.MODIFIERS);</span>
+<span class="fc" id="L523">        TokenUtil.forEachChild(modifiers, TokenTypes.ANNOTATION, annotationsList::add);</span>
+<span class="fc" id="L524">        return annotationsList;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

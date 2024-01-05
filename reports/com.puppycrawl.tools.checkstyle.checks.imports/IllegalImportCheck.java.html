@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IllegalImportCheck.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.checks.imports</a> &gt; <span class="el_source">IllegalImportCheck.java</span></div><h1>IllegalImportCheck.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.checks.imports;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Pattern;
+
+import com.puppycrawl.tools.checkstyle.StatelessCheck;
+import com.puppycrawl.tools.checkstyle.api.AbstractCheck;
+import com.puppycrawl.tools.checkstyle.api.DetailAST;
+import com.puppycrawl.tools.checkstyle.api.FullIdent;
+import com.puppycrawl.tools.checkstyle.api.TokenTypes;
+import com.puppycrawl.tools.checkstyle.utils.CommonUtil;
+
+/**
+ * &lt;p&gt;
+ * Checks for imports from a set of illegal packages.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Note: By default, the check rejects all {@code sun.*} packages since programs
+ * that contain direct calls to the {@code sun.*} packages are
+ * &lt;a href=&quot;https://www.oracle.com/java/technologies/faq-sun-packages.html&quot;&gt;
+ * &quot;not guaranteed to work on all Java-compatible platforms&quot;&lt;/a&gt;. To reject other
+ * packages, set property {@code illegalPkgs} to a list of the illegal packages.
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * Property {@code illegalClasses} - Specify class names to reject, if &lt;b&gt;regexp&lt;/b&gt;
+ * property is not set, checks if import equals class name. If &lt;b&gt;regexp&lt;/b&gt;
+ * property is set, then list of class names will be interpreted as regular expressions.
+ * Note, all properties for match will be used.
+ * Type is {@code java.lang.String[]}.
+ * Default value is {@code &quot;&quot;}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code illegalPkgs} - Specify packages to reject, if &lt;b&gt;regexp&lt;/b&gt;
+ * property is not set, checks if import is the part of package. If &lt;b&gt;regexp&lt;/b&gt;
+ * property is set, then list of packages will be interpreted as regular expressions.
+ * Note, all properties for match will be used.
+ * Type is {@code java.lang.String[]}.
+ * Default value is {@code sun}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code regexp} - Control whether the {@code illegalPkgs} and
+ * {@code illegalClasses} should be interpreted as regular expressions.
+ * Type is {@code boolean}.
+ * Default value is {@code false}.
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Parent is {@code com.puppycrawl.tools.checkstyle.TreeWalker}
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Violation Message Keys:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * {@code import.illegal}
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * @since 3.0
+ */
+@StatelessCheck
+public class IllegalImportCheck
+    extends AbstractCheck {
+
+    /**
+     * A key is pointing to the warning message text in &quot;messages.properties&quot;
+     * file.
+     */
+    public static final String MSG_KEY = &quot;import.illegal&quot;;
+
+    /** The compiled regular expressions for packages. */
+<span class="fc" id="L93">    private final List&lt;Pattern&gt; illegalPkgsRegexps = new ArrayList&lt;&gt;();</span>
+
+    /** The compiled regular expressions for classes. */
+<span class="fc" id="L96">    private final List&lt;Pattern&gt; illegalClassesRegexps = new ArrayList&lt;&gt;();</span>
+
+    /**
+     * Specify packages to reject, if &lt;b&gt;regexp&lt;/b&gt; property is not set, checks
+     * if import is the part of package. If &lt;b&gt;regexp&lt;/b&gt; property is set, then
+     * list of packages will be interpreted as regular expressions.
+     * Note, all properties for match will be used.
+     */
+    private String[] illegalPkgs;
+
+    /**
+     * Specify class names to reject, if &lt;b&gt;regexp&lt;/b&gt; property is not set,
+     * checks if import equals class name. If &lt;b&gt;regexp&lt;/b&gt; property is set,
+     * then list of class names will be interpreted as regular expressions.
+     * Note, all properties for match will be used.
+     */
+    private String[] illegalClasses;
+
+    /**
+     * Control whether the {@code illegalPkgs} and {@code illegalClasses}
+     * should be interpreted as regular expressions.
+     */
+    private boolean regexp;
+
+    /**
+     * Creates a new {@code IllegalImportCheck} instance.
+     */
+<span class="fc" id="L123">    public IllegalImportCheck() {</span>
+<span class="fc" id="L124">        setIllegalPkgs(&quot;sun&quot;);</span>
+<span class="fc" id="L125">    }</span>
+
+    /**
+     * Setter to specify packages to reject, if &lt;b&gt;regexp&lt;/b&gt; property is not set,
+     * checks if import is the part of package. If &lt;b&gt;regexp&lt;/b&gt; property is set,
+     * then list of packages will be interpreted as regular expressions.
+     * Note, all properties for match will be used.
+     *
+     * @param from illegal packages
+     * @noinspection WeakerAccess
+     * @noinspectionreason WeakerAccess - we avoid 'protected' when possible
+     * @since 3.0
+     */
+    public final void setIllegalPkgs(String... from) {
+<span class="fc" id="L139">        illegalPkgs = from.clone();</span>
+<span class="fc" id="L140">        illegalPkgsRegexps.clear();</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        for (String illegalPkg : illegalPkgs) {</span>
+<span class="fc" id="L142">            illegalPkgsRegexps.add(CommonUtil.createPattern(&quot;^&quot; + illegalPkg + &quot;\\..*&quot;));</span>
+        }
+<span class="fc" id="L144">    }</span>
+
+    /**
+     * Setter to specify class names to reject, if &lt;b&gt;regexp&lt;/b&gt; property is not
+     * set, checks if import equals class name. If &lt;b&gt;regexp&lt;/b&gt; property is set,
+     * then list of class names will be interpreted as regular expressions.
+     * Note, all properties for match will be used.
+     *
+     * @param from illegal classes
+     * @since 7.8
+     */
+    public void setIllegalClasses(String... from) {
+<span class="fc" id="L156">        illegalClasses = from.clone();</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        for (String illegalClass : illegalClasses) {</span>
+<span class="fc" id="L158">            illegalClassesRegexps.add(CommonUtil.createPattern(illegalClass));</span>
+        }
+<span class="fc" id="L160">    }</span>
+
+    /**
+     * Setter to control whether the {@code illegalPkgs} and {@code illegalClasses}
+     * should be interpreted as regular expressions.
+     *
+     * @param regexp a {@code Boolean} value
+     * @since 7.8
+     */
+    public void setRegexp(boolean regexp) {
+<span class="fc" id="L170">        this.regexp = regexp;</span>
+<span class="fc" id="L171">    }</span>
+
+    @Override
+    public int[] getDefaultTokens() {
+<span class="fc" id="L175">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+<span class="fc" id="L180">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getRequiredTokens() {
+<span class="fc" id="L185">        return new int[] {TokenTypes.IMPORT, TokenTypes.STATIC_IMPORT};</span>
+    }
+
+    @Override
+    public void visitToken(DetailAST ast) {
+        final FullIdent imp;
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        if (ast.getType() == TokenTypes.IMPORT) {</span>
+<span class="fc" id="L192">            imp = FullIdent.createFullIdentBelow(ast);</span>
+        }
+        else {
+<span class="fc" id="L195">            imp = FullIdent.createFullIdent(</span>
+<span class="fc" id="L196">                ast.getFirstChild().getNextSibling());</span>
+        }
+<span class="fc" id="L198">        final String importText = imp.getText();</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        if (isIllegalImport(importText)) {</span>
+<span class="fc" id="L200">            log(ast, MSG_KEY, importText);</span>
+        }
+<span class="fc" id="L202">    }</span>
+
+    /**
+     * Checks if an import matches one of the regular expressions
+     * for illegal packages or illegal class names.
+     *
+     * @param importText the argument of the import keyword
+     * @return if {@code importText} matches one of the regular expressions
+     *         for illegal packages or illegal class names
+     */
+    private boolean isIllegalImportByRegularExpressions(String importText) {
+<span class="fc" id="L213">        boolean result = false;</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        for (Pattern pattern : illegalPkgsRegexps) {</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">            if (pattern.matcher(importText).matches()) {</span>
+<span class="fc" id="L216">                result = true;</span>
+<span class="fc" id="L217">                break;</span>
+            }
+<span class="fc" id="L219">        }</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">        for (Pattern pattern : illegalClassesRegexps) {</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">            if (pattern.matcher(importText).matches()) {</span>
+<span class="fc" id="L222">                result = true;</span>
+<span class="fc" id="L223">                break;</span>
+            }
+<span class="fc" id="L225">        }</span>
+<span class="fc" id="L226">        return result;</span>
+    }
+
+    /**
+     * Checks if an import is from a package or class name that must not be used.
+     *
+     * @param importText the argument of the import keyword
+     * @return if {@code importText} contains an illegal package prefix or equals illegal class name
+     */
+    private boolean isIllegalImportByPackagesAndClassNames(String importText) {
+<span class="fc" id="L236">        boolean result = false;</span>
+<span class="fc bfc" id="L237" title="All 2 branches covered.">        for (String element : illegalPkgs) {</span>
+<span class="fc bfc" id="L238" title="All 2 branches covered.">            if (importText.startsWith(element + &quot;.&quot;)) {</span>
+<span class="fc" id="L239">                result = true;</span>
+<span class="fc" id="L240">                break;</span>
+            }
+        }
+<span class="fc bfc" id="L243" title="All 2 branches covered.">        if (illegalClasses != null) {</span>
+<span class="fc bfc" id="L244" title="All 2 branches covered.">            for (String element : illegalClasses) {</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">                if (importText.equals(element)) {</span>
+<span class="fc" id="L246">                    result = true;</span>
+<span class="fc" id="L247">                    break;</span>
+                }
+            }
+        }
+<span class="fc" id="L251">        return result;</span>
+    }
+
+    /**
+     * Checks if an import is from a package or class name that must not be used.
+     *
+     * @param importText the argument of the import keyword
+     * @return if {@code importText} is illegal import
+     */
+    private boolean isIllegalImport(String importText) {
+        final boolean result;
+<span class="fc bfc" id="L262" title="All 2 branches covered.">        if (regexp) {</span>
+<span class="fc" id="L263">            result = isIllegalImportByRegularExpressions(importText);</span>
+        }
+        else {
+<span class="fc" id="L266">            result = isIllegalImportByPackagesAndClassNames(importText);</span>
+        }
+<span class="fc" id="L268">        return result;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

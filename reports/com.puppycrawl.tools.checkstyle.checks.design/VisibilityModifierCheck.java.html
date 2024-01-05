@@ -1,0 +1,816 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VisibilityModifierCheck.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.checks.design</a> &gt; <span class="el_source">VisibilityModifierCheck.java</span></div><h1>VisibilityModifierCheck.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.checks.design;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
+import com.puppycrawl.tools.checkstyle.FileStatefulCheck;
+import com.puppycrawl.tools.checkstyle.api.AbstractCheck;
+import com.puppycrawl.tools.checkstyle.api.DetailAST;
+import com.puppycrawl.tools.checkstyle.api.FullIdent;
+import com.puppycrawl.tools.checkstyle.api.TokenTypes;
+import com.puppycrawl.tools.checkstyle.utils.AnnotationUtil;
+import com.puppycrawl.tools.checkstyle.utils.CommonUtil;
+import com.puppycrawl.tools.checkstyle.utils.ScopeUtil;
+
+/**
+ * &lt;p&gt;
+ * Checks visibility of class members. Only static final, immutable or annotated
+ * by specified annotation members may be public;
+ * other class members must be private unless the property {@code protectedAllowed}
+ * or {@code packageAllowed} is set.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Public members are not flagged if the name matches the public
+ * member regular expression (contains {@code &quot;^serialVersionUID$&quot;} by
+ * default).
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Note that Checkstyle 2 used to include {@code &quot;^f[A-Z][a-zA-Z0-9]*$&quot;} in the default pattern
+ * to allow names used in container-managed persistence for Enterprise JavaBeans (EJB) 1.1 with
+ * the default settings. With EJB 2.0 it is no longer necessary to have public access for
+ * persistent fields, so the default has been changed.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Rationale: Enforce encapsulation.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Check also has options making it less strict:
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * &lt;b&gt;ignoreAnnotationCanonicalNames&lt;/b&gt;- the list of annotations which ignore
+ * variables in consideration. If user want to provide short annotation name that
+ * type will match to any named the same type without consideration of package.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * &lt;b&gt;allowPublicFinalFields&lt;/b&gt;- which allows public final fields.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * &lt;b&gt;allowPublicImmutableFields&lt;/b&gt;- which allows immutable fields to be
+ * declared as public if defined in final class.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Field is known to be immutable if:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;It's declared as final&lt;/li&gt;
+ * &lt;li&gt;Has either a primitive type or instance of class user defined to be immutable
+ * (such as String, ImmutableCollection from Guava, etc.)&lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Classes known to be immutable are listed in &lt;b&gt;immutableClassCanonicalNames&lt;/b&gt;
+ * by their canonical names.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Property Rationale: Forcing all fields of class to have private modifier by default is
+ * good in most cases, but in some cases it drawbacks in too much boilerplate get/set code.
+ * One of such cases are immutable classes.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Restriction: Check doesn't check if class is immutable, there's no checking
+ * if accessory methods are missing and all fields are immutable, we only check
+ * if current field is immutable or final.
+ * Under the flag &lt;b&gt;allowPublicImmutableFields&lt;/b&gt;, the enclosing class must
+ * also be final, to encourage immutability.
+ * Under the flag &lt;b&gt;allowPublicFinalFields&lt;/b&gt;, the final modifier
+ * on the enclosing class is optional.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Star imports are out of scope of this Check. So if one of type imported via
+ * star import collides with user specified one by its short name - there
+ * won't be Check's violation.
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * Property {@code allowPublicFinalFields} - Allow final fields to be declared as public.
+ * Type is {@code boolean}.
+ * Default value is {@code false}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code allowPublicImmutableFields} - Allow immutable fields to be
+ * declared as public if defined in final class.
+ * Type is {@code boolean}.
+ * Default value is {@code false}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code ignoreAnnotationCanonicalNames} - Specify annotations canonical
+ * names which ignore variables in consideration.
+ * Type is {@code java.lang.String[]}.
+ * Default value is {@code com.google.common.annotations.VisibleForTesting,
+ * org.junit.ClassRule, org.junit.Rule}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code immutableClassCanonicalNames} - Specify immutable classes canonical names.
+ * Type is {@code java.lang.String[]}.
+ * Default value is {@code java.io.File, java.lang.Boolean, java.lang.Byte,
+ * java.lang.Character, java.lang.Double, java.lang.Float, java.lang.Integer,
+ * java.lang.Long, java.lang.Short, java.lang.StackTraceElement, java.lang.String,
+ * java.math.BigDecimal, java.math.BigInteger, java.net.Inet4Address, java.net.Inet6Address,
+ * java.net.InetSocketAddress, java.net.URI, java.net.URL, java.util.Locale, java.util.UUID}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code packageAllowed} - Control whether package visible members are allowed.
+ * Type is {@code boolean}.
+ * Default value is {@code false}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code protectedAllowed} - Control whether protected members are allowed.
+ * Type is {@code boolean}.
+ * Default value is {@code false}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code publicMemberPattern} - Specify pattern for public members that should be ignored.
+ * Type is {@code java.util.regex.Pattern}.
+ * Default value is {@code &quot;^serialVersionUID$&quot;}.
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Parent is {@code com.puppycrawl.tools.checkstyle.TreeWalker}
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Violation Message Keys:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * {@code variable.notPrivate}
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * @since 3.0
+ */
+@FileStatefulCheck
+<span class="fc" id="L165">public class VisibilityModifierCheck</span>
+    extends AbstractCheck {
+
+    /**
+     * A key is pointing to the warning message text in &quot;messages.properties&quot;
+     * file.
+     */
+    public static final String MSG_KEY = &quot;variable.notPrivate&quot;;
+
+    /** Default immutable types canonical names. */
+<span class="fc" id="L175">    private static final Set&lt;String&gt; DEFAULT_IMMUTABLE_TYPES = Set.of(</span>
+        &quot;java.lang.String&quot;,
+        &quot;java.lang.Integer&quot;,
+        &quot;java.lang.Byte&quot;,
+        &quot;java.lang.Character&quot;,
+        &quot;java.lang.Short&quot;,
+        &quot;java.lang.Boolean&quot;,
+        &quot;java.lang.Long&quot;,
+        &quot;java.lang.Double&quot;,
+        &quot;java.lang.Float&quot;,
+        &quot;java.lang.StackTraceElement&quot;,
+        &quot;java.math.BigInteger&quot;,
+        &quot;java.math.BigDecimal&quot;,
+        &quot;java.io.File&quot;,
+        &quot;java.util.Locale&quot;,
+        &quot;java.util.UUID&quot;,
+        &quot;java.net.URL&quot;,
+        &quot;java.net.URI&quot;,
+        &quot;java.net.Inet4Address&quot;,
+        &quot;java.net.Inet6Address&quot;,
+        &quot;java.net.InetSocketAddress&quot;
+    );
+
+    /** Default ignore annotations canonical names. */
+<span class="fc" id="L199">    private static final Set&lt;String&gt; DEFAULT_IGNORE_ANNOTATIONS = Set.of(</span>
+        &quot;org.junit.Rule&quot;,
+        &quot;org.junit.ClassRule&quot;,
+        &quot;com.google.common.annotations.VisibleForTesting&quot;
+    );
+
+    /** Name for 'public' access modifier. */
+    private static final String PUBLIC_ACCESS_MODIFIER = &quot;public&quot;;
+
+    /** Name for 'private' access modifier. */
+    private static final String PRIVATE_ACCESS_MODIFIER = &quot;private&quot;;
+
+    /** Name for 'protected' access modifier. */
+    private static final String PROTECTED_ACCESS_MODIFIER = &quot;protected&quot;;
+
+    /** Name for implicit 'package' access modifier. */
+    private static final String PACKAGE_ACCESS_MODIFIER = &quot;package&quot;;
+
+    /** Name for 'static' keyword. */
+    private static final String STATIC_KEYWORD = &quot;static&quot;;
+
+    /** Name for 'final' keyword. */
+    private static final String FINAL_KEYWORD = &quot;final&quot;;
+
+    /** Contains explicit access modifiers. */
+<span class="fc" id="L224">    private static final String[] EXPLICIT_MODS = {</span>
+        PUBLIC_ACCESS_MODIFIER,
+        PRIVATE_ACCESS_MODIFIER,
+        PROTECTED_ACCESS_MODIFIER,
+    };
+
+    /**
+     * Specify pattern for public members that should be ignored.
+     */
+<span class="fc" id="L233">    private Pattern publicMemberPattern = Pattern.compile(&quot;^serialVersionUID$&quot;);</span>
+
+    /** Set of ignore annotations short names. */
+    private Set&lt;String&gt; ignoreAnnotationShortNames;
+
+    /** Set of immutable classes short names. */
+    private Set&lt;String&gt; immutableClassShortNames;
+
+    /**
+     * Specify annotations canonical names which ignore variables in
+     * consideration.
+     */
+<span class="fc" id="L245">    private Set&lt;String&gt; ignoreAnnotationCanonicalNames = DEFAULT_IGNORE_ANNOTATIONS;</span>
+
+    /** Control whether protected members are allowed. */
+    private boolean protectedAllowed;
+
+    /** Control whether package visible members are allowed. */
+    private boolean packageAllowed;
+
+    /** Allow immutable fields to be declared as public if defined in final class. */
+    private boolean allowPublicImmutableFields;
+
+    /** Allow final fields to be declared as public. */
+    private boolean allowPublicFinalFields;
+
+    /** Specify immutable classes canonical names. */
+<span class="fc" id="L260">    private Set&lt;String&gt; immutableClassCanonicalNames = DEFAULT_IMMUTABLE_TYPES;</span>
+
+    /**
+     * Setter to specify annotations canonical names which ignore variables
+     * in consideration.
+     *
+     * @param annotationNames array of ignore annotations canonical names.
+     * @since 6.5
+     */
+    public void setIgnoreAnnotationCanonicalNames(String... annotationNames) {
+<span class="fc" id="L270">        ignoreAnnotationCanonicalNames = Set.of(annotationNames);</span>
+<span class="fc" id="L271">    }</span>
+
+    /**
+     * Setter to control whether protected members are allowed.
+     *
+     * @param protectedAllowed whether protected members are allowed
+     * @since 3.0
+     */
+    public void setProtectedAllowed(boolean protectedAllowed) {
+<span class="fc" id="L280">        this.protectedAllowed = protectedAllowed;</span>
+<span class="fc" id="L281">    }</span>
+
+    /**
+     * Setter to control whether package visible members are allowed.
+     *
+     * @param packageAllowed whether package visible members are allowed
+     * @since 3.0
+     */
+    public void setPackageAllowed(boolean packageAllowed) {
+<span class="fc" id="L290">        this.packageAllowed = packageAllowed;</span>
+<span class="fc" id="L291">    }</span>
+
+    /**
+     * Setter to specify pattern for public members that should be ignored.
+     *
+     * @param pattern
+     *        pattern for public members to ignore.
+     * @since 3.0
+     */
+    public void setPublicMemberPattern(Pattern pattern) {
+<span class="fc" id="L301">        publicMemberPattern = pattern;</span>
+<span class="fc" id="L302">    }</span>
+
+    /**
+     * Setter to allow immutable fields to be declared as public if defined in final class.
+     *
+     * @param allow user's value.
+     * @since 6.4
+     */
+    public void setAllowPublicImmutableFields(boolean allow) {
+<span class="fc" id="L311">        allowPublicImmutableFields = allow;</span>
+<span class="fc" id="L312">    }</span>
+
+    /**
+     * Setter to allow final fields to be declared as public.
+     *
+     * @param allow user's value.
+     * @since 7.0
+     */
+    public void setAllowPublicFinalFields(boolean allow) {
+<span class="fc" id="L321">        allowPublicFinalFields = allow;</span>
+<span class="fc" id="L322">    }</span>
+
+    /**
+     * Setter to specify immutable classes canonical names.
+     *
+     * @param classNames array of immutable types canonical names.
+     * @since 6.4.1
+     */
+    public void setImmutableClassCanonicalNames(String... classNames) {
+<span class="fc" id="L331">        immutableClassCanonicalNames = Set.of(classNames);</span>
+<span class="fc" id="L332">    }</span>
+
+    @Override
+    public int[] getDefaultTokens() {
+<span class="fc" id="L336">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+<span class="fc" id="L341">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getRequiredTokens() {
+<span class="fc" id="L346">        return new int[] {</span>
+            TokenTypes.VARIABLE_DEF,
+            TokenTypes.IMPORT,
+        };
+    }
+
+    @Override
+    public void beginTree(DetailAST rootAst) {
+<span class="fc" id="L354">        immutableClassShortNames = getClassShortNames(immutableClassCanonicalNames);</span>
+<span class="fc" id="L355">        ignoreAnnotationShortNames = getClassShortNames(ignoreAnnotationCanonicalNames);</span>
+<span class="fc" id="L356">    }</span>
+
+    @Override
+    public void visitToken(DetailAST ast) {
+<span class="fc bfc" id="L360" title="All 3 branches covered.">        switch (ast.getType()) {</span>
+            case TokenTypes.VARIABLE_DEF:
+<span class="fc bfc" id="L362" title="All 2 branches covered.">                if (!isAnonymousClassVariable(ast)) {</span>
+<span class="fc" id="L363">                    visitVariableDef(ast);</span>
+                }
+                break;
+            case TokenTypes.IMPORT:
+<span class="fc" id="L367">                visitImport(ast);</span>
+<span class="fc" id="L368">                break;</span>
+            default:
+<span class="fc" id="L370">                final String exceptionMsg = &quot;Unexpected token type: &quot; + ast.getText();</span>
+<span class="fc" id="L371">                throw new IllegalArgumentException(exceptionMsg);</span>
+        }
+<span class="fc" id="L373">    }</span>
+
+    /**
+     * Checks if current variable definition is definition of an anonymous class.
+     *
+     * @param variableDef {@link TokenTypes#VARIABLE_DEF VARIABLE_DEF}
+     * @return true if current variable definition is definition of an anonymous class.
+     */
+    private static boolean isAnonymousClassVariable(DetailAST variableDef) {
+<span class="fc bfc" id="L382" title="All 2 branches covered.">        return variableDef.getParent().getType() != TokenTypes.OBJBLOCK;</span>
+    }
+
+    /**
+     * Checks access modifier of given variable.
+     * If it is not proper according to Check - puts violation on it.
+     *
+     * @param variableDef variable to check.
+     */
+    private void visitVariableDef(DetailAST variableDef) {
+<span class="fc" id="L392">        final boolean inInterfaceOrAnnotationBlock =</span>
+<span class="fc" id="L393">                ScopeUtil.isInInterfaceOrAnnotationBlock(variableDef);</span>
+
+<span class="fc bfc" id="L395" title="All 4 branches covered.">        if (!inInterfaceOrAnnotationBlock &amp;&amp; !hasIgnoreAnnotation(variableDef)) {</span>
+<span class="fc" id="L396">            final DetailAST varNameAST = variableDef.findFirstToken(TokenTypes.TYPE)</span>
+<span class="fc" id="L397">                .getNextSibling();</span>
+<span class="fc" id="L398">            final String varName = varNameAST.getText();</span>
+<span class="fc bfc" id="L399" title="All 2 branches covered.">            if (!hasProperAccessModifier(variableDef, varName)) {</span>
+<span class="fc" id="L400">                log(varNameAST, MSG_KEY, varName);</span>
+            }
+        }
+<span class="fc" id="L403">    }</span>
+
+    /**
+     * Checks if variable def has ignore annotation.
+     *
+     * @param variableDef {@link TokenTypes#VARIABLE_DEF VARIABLE_DEF}
+     * @return true if variable def has ignore annotation.
+     */
+    private boolean hasIgnoreAnnotation(DetailAST variableDef) {
+<span class="fc" id="L412">        final DetailAST firstIgnoreAnnotation =</span>
+<span class="fc" id="L413">                 findMatchingAnnotation(variableDef);</span>
+<span class="fc bfc" id="L414" title="All 2 branches covered.">        return firstIgnoreAnnotation != null;</span>
+    }
+
+    /**
+     * Checks imported type. If type's canonical name was not specified in
+     * &lt;b&gt;immutableClassCanonicalNames&lt;/b&gt;, but its short name collides with one from
+     * &lt;b&gt;immutableClassShortNames&lt;/b&gt; - removes it from the last one.
+     *
+     * @param importAst {@link TokenTypes#IMPORT Import}
+     */
+    private void visitImport(DetailAST importAst) {
+<span class="fc bfc" id="L425" title="All 2 branches covered.">        if (!isStarImport(importAst)) {</span>
+<span class="fc" id="L426">            final String canonicalName = getCanonicalName(importAst);</span>
+<span class="fc" id="L427">            final String shortName = getClassShortName(canonicalName);</span>
+
+            // If imported canonical class name is not specified as allowed immutable class,
+            // but its short name collides with one of specified class - removes the short name
+            // from list to avoid names collision
+<span class="fc bfc" id="L432" title="All 2 branches covered.">            if (!immutableClassCanonicalNames.contains(canonicalName)) {</span>
+<span class="fc" id="L433">                immutableClassShortNames.remove(shortName);</span>
+            }
+<span class="fc bfc" id="L435" title="All 2 branches covered.">            if (!ignoreAnnotationCanonicalNames.contains(canonicalName)) {</span>
+<span class="fc" id="L436">                ignoreAnnotationShortNames.remove(shortName);</span>
+            }
+        }
+<span class="fc" id="L439">    }</span>
+
+    /**
+     * Checks if current import is star import. E.g.:
+     * &lt;p&gt;
+     * {@code
+     * import java.util.*;
+     * }
+     * &lt;/p&gt;
+     *
+     * @param importAst {@link TokenTypes#IMPORT Import}
+     * @return true if it is star import
+     */
+    private static boolean isStarImport(DetailAST importAst) {
+<span class="fc" id="L453">        boolean result = false;</span>
+<span class="fc" id="L454">        DetailAST toVisit = importAst;</span>
+<span class="fc bfc" id="L455" title="All 2 branches covered.">        while (toVisit != null) {</span>
+<span class="fc" id="L456">            toVisit = getNextSubTreeNode(toVisit, importAst);</span>
+<span class="fc bfc" id="L457" title="All 4 branches covered.">            if (toVisit != null &amp;&amp; toVisit.getType() == TokenTypes.STAR) {</span>
+<span class="fc" id="L458">                result = true;</span>
+<span class="fc" id="L459">                break;</span>
+            }
+        }
+<span class="fc" id="L462">        return result;</span>
+    }
+
+    /**
+     * Checks if current variable has proper access modifier according to Check's options.
+     *
+     * @param variableDef Variable definition node.
+     * @param variableName Variable's name.
+     * @return true if variable has proper access modifier.
+     */
+    private boolean hasProperAccessModifier(DetailAST variableDef, String variableName) {
+<span class="fc" id="L473">        boolean result = true;</span>
+
+<span class="fc" id="L475">        final String variableScope = getVisibilityScope(variableDef);</span>
+
+<span class="fc bfc" id="L477" title="All 2 branches covered.">        if (!PRIVATE_ACCESS_MODIFIER.equals(variableScope)) {</span>
+<span class="fc" id="L478">            result =</span>
+<span class="fc bfc" id="L479" title="All 4 branches covered.">                isStaticFinalVariable(variableDef)</span>
+<span class="fc bfc" id="L480" title="All 4 branches covered.">                || packageAllowed &amp;&amp; PACKAGE_ACCESS_MODIFIER.equals(variableScope)</span>
+<span class="fc bfc" id="L481" title="All 2 branches covered.">                || protectedAllowed &amp;&amp; PROTECTED_ACCESS_MODIFIER.equals(variableScope)</span>
+<span class="fc bfc" id="L482" title="All 2 branches covered.">                || isIgnoredPublicMember(variableName, variableScope)</span>
+<span class="fc bfc" id="L483" title="All 2 branches covered.">                || isAllowedPublicField(variableDef);</span>
+        }
+
+<span class="fc" id="L486">        return result;</span>
+    }
+
+    /**
+     * Checks whether variable has static final modifiers.
+     *
+     * @param variableDef Variable definition node.
+     * @return true of variable has static final modifiers.
+     */
+    private static boolean isStaticFinalVariable(DetailAST variableDef) {
+<span class="fc" id="L496">        final Set&lt;String&gt; modifiers = getModifiers(variableDef);</span>
+<span class="fc bfc" id="L497" title="All 2 branches covered.">        return modifiers.contains(STATIC_KEYWORD)</span>
+<span class="fc bfc" id="L498" title="All 2 branches covered.">                &amp;&amp; modifiers.contains(FINAL_KEYWORD);</span>
+    }
+
+    /**
+     * Checks whether variable belongs to public members that should be ignored.
+     *
+     * @param variableName Variable's name.
+     * @param variableScope Variable's scope.
+     * @return true if variable belongs to public members that should be ignored.
+     */
+    private boolean isIgnoredPublicMember(String variableName, String variableScope) {
+<span class="fc bfc" id="L509" title="All 2 branches covered.">        return PUBLIC_ACCESS_MODIFIER.equals(variableScope)</span>
+<span class="fc bfc" id="L510" title="All 2 branches covered.">            &amp;&amp; publicMemberPattern.matcher(variableName).find();</span>
+    }
+
+    /**
+     * Checks whether the variable satisfies the public field check.
+     *
+     * @param variableDef Variable definition node.
+     * @return true if allowed.
+     */
+    private boolean isAllowedPublicField(DetailAST variableDef) {
+<span class="fc bfc" id="L520" title="All 6 branches covered.">        return allowPublicFinalFields &amp;&amp; isFinalField(variableDef)</span>
+<span class="fc bfc" id="L521" title="All 2 branches covered.">            || allowPublicImmutableFields &amp;&amp; isImmutableFieldDefinedInFinalClass(variableDef);</span>
+    }
+
+    /**
+     * Checks whether immutable field is defined in final class.
+     *
+     * @param variableDef Variable definition node.
+     * @return true if immutable field is defined in final class.
+     */
+    private boolean isImmutableFieldDefinedInFinalClass(DetailAST variableDef) {
+<span class="fc" id="L531">        final DetailAST classDef = variableDef.getParent().getParent();</span>
+<span class="fc" id="L532">        final Set&lt;String&gt; classModifiers = getModifiers(classDef);</span>
+<span class="fc bfc" id="L533" title="All 4 branches covered.">        return (classModifiers.contains(FINAL_KEYWORD) || classDef.getType() == TokenTypes.ENUM_DEF)</span>
+<span class="fc bfc" id="L534" title="All 2 branches covered.">                &amp;&amp; isImmutableField(variableDef);</span>
+    }
+
+    /**
+     * Returns the set of modifier Strings for a VARIABLE_DEF or CLASS_DEF AST.
+     *
+     * @param defAST AST for a variable or class definition.
+     * @return the set of modifier Strings for defAST.
+     */
+    private static Set&lt;String&gt; getModifiers(DetailAST defAST) {
+<span class="fc" id="L544">        final DetailAST modifiersAST = defAST.findFirstToken(TokenTypes.MODIFIERS);</span>
+<span class="fc" id="L545">        final Set&lt;String&gt; modifiersSet = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L546" title="All 2 branches covered.">        if (modifiersAST != null) {</span>
+<span class="fc" id="L547">            DetailAST modifier = modifiersAST.getFirstChild();</span>
+<span class="fc bfc" id="L548" title="All 2 branches covered.">            while (modifier != null) {</span>
+<span class="fc" id="L549">                modifiersSet.add(modifier.getText());</span>
+<span class="fc" id="L550">                modifier = modifier.getNextSibling();</span>
+            }
+        }
+<span class="fc" id="L553">        return modifiersSet;</span>
+    }
+
+    /**
+     * Returns the visibility scope for the variable.
+     *
+     * @param variableDef Variable definition node.
+     * @return one of &quot;public&quot;, &quot;private&quot;, &quot;protected&quot;, &quot;package&quot;
+     */
+    private static String getVisibilityScope(DetailAST variableDef) {
+<span class="fc" id="L563">        final Set&lt;String&gt; modifiers = getModifiers(variableDef);</span>
+<span class="fc" id="L564">        String accessModifier = PACKAGE_ACCESS_MODIFIER;</span>
+<span class="fc bfc" id="L565" title="All 2 branches covered.">        for (final String modifier : EXPLICIT_MODS) {</span>
+<span class="fc bfc" id="L566" title="All 2 branches covered.">            if (modifiers.contains(modifier)) {</span>
+<span class="fc" id="L567">                accessModifier = modifier;</span>
+<span class="fc" id="L568">                break;</span>
+            }
+        }
+<span class="fc" id="L571">        return accessModifier;</span>
+    }
+
+    /**
+     * Checks if current field is immutable:
+     * has final modifier and either a primitive type or instance of class
+     * known to be immutable (such as String, ImmutableCollection from Guava, etc.).
+     * Classes known to be immutable are listed in
+     * {@link VisibilityModifierCheck#immutableClassCanonicalNames}
+     *
+     * @param variableDef Field in consideration.
+     * @return true if field is immutable.
+     */
+    private boolean isImmutableField(DetailAST variableDef) {
+<span class="fc" id="L585">        boolean result = false;</span>
+<span class="fc bfc" id="L586" title="All 2 branches covered.">        if (isFinalField(variableDef)) {</span>
+<span class="fc" id="L587">            final DetailAST type = variableDef.findFirstToken(TokenTypes.TYPE);</span>
+<span class="fc" id="L588">            final boolean isCanonicalName = isCanonicalName(type);</span>
+<span class="fc" id="L589">            final String typeName = getCanonicalName(type);</span>
+<span class="fc bfc" id="L590" title="All 4 branches covered.">            if (immutableClassShortNames.contains(typeName)</span>
+<span class="fc bfc" id="L591" title="All 2 branches covered.">                    || isCanonicalName &amp;&amp; immutableClassCanonicalNames.contains(typeName)) {</span>
+<span class="fc" id="L592">                final DetailAST typeArgs = getGenericTypeArgs(type, isCanonicalName);</span>
+
+<span class="fc bfc" id="L594" title="All 2 branches covered.">                if (typeArgs == null) {</span>
+<span class="fc" id="L595">                    result = true;</span>
+                }
+                else {
+<span class="fc" id="L598">                    final List&lt;String&gt; argsClassNames = getTypeArgsClassNames(typeArgs);</span>
+<span class="fc" id="L599">                    result = areImmutableTypeArguments(argsClassNames);</span>
+                }
+<span class="fc" id="L601">            }</span>
+            else {
+<span class="fc bfc" id="L603" title="All 4 branches covered.">                result = !isCanonicalName &amp;&amp; isPrimitive(type);</span>
+            }
+        }
+<span class="fc" id="L606">        return result;</span>
+    }
+
+    /**
+     * Checks whether type definition is in canonical form.
+     *
+     * @param type type definition token.
+     * @return true if type definition is in canonical form.
+     */
+    private static boolean isCanonicalName(DetailAST type) {
+<span class="fc bfc" id="L616" title="All 2 branches covered.">        return type.getFirstChild().getType() == TokenTypes.DOT;</span>
+    }
+
+    /**
+     * Returns generic type arguments token.
+     *
+     * @param type type token.
+     * @param isCanonicalName whether type name is in canonical form.
+     * @return generic type arguments token.
+     */
+    private static DetailAST getGenericTypeArgs(DetailAST type, boolean isCanonicalName) {
+        final DetailAST typeArgs;
+<span class="fc bfc" id="L628" title="All 2 branches covered.">        if (isCanonicalName) {</span>
+            // if type class name is in canonical form, abstract tree has specific structure
+<span class="fc" id="L630">            typeArgs = type.getFirstChild().findFirstToken(TokenTypes.TYPE_ARGUMENTS);</span>
+        }
+        else {
+<span class="fc" id="L633">            typeArgs = type.findFirstToken(TokenTypes.TYPE_ARGUMENTS);</span>
+        }
+<span class="fc" id="L635">        return typeArgs;</span>
+    }
+
+    /**
+     * Returns a list of type parameters class names.
+     *
+     * @param typeArgs type arguments token.
+     * @return a list of type parameters class names.
+     */
+    private static List&lt;String&gt; getTypeArgsClassNames(DetailAST typeArgs) {
+<span class="fc" id="L645">        final List&lt;String&gt; typeClassNames = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L646">        DetailAST type = typeArgs.findFirstToken(TokenTypes.TYPE_ARGUMENT);</span>
+        DetailAST sibling;
+        do {
+<span class="fc" id="L649">            final String typeName = getCanonicalName(type);</span>
+<span class="fc" id="L650">            typeClassNames.add(typeName);</span>
+<span class="fc" id="L651">            sibling = type.getNextSibling();</span>
+<span class="fc" id="L652">            type = sibling.getNextSibling();</span>
+<span class="fc bfc" id="L653" title="All 2 branches covered.">        } while (sibling.getType() == TokenTypes.COMMA);</span>
+<span class="fc" id="L654">        return typeClassNames;</span>
+    }
+
+    /**
+     * Checks whether all generic type arguments are immutable.
+     * If at least one argument is mutable, we assume that the whole list of type arguments
+     * is mutable.
+     *
+     * @param typeArgsClassNames type arguments class names.
+     * @return true if all generic type arguments are immutable.
+     */
+    private boolean areImmutableTypeArguments(Collection&lt;String&gt; typeArgsClassNames) {
+<span class="fc" id="L666">        return typeArgsClassNames.stream().noneMatch(</span>
+            typeName -&gt; {
+<span class="fc bfc" id="L668" title="All 2 branches covered.">                return !immutableClassShortNames.contains(typeName)</span>
+<span class="fc bfc" id="L669" title="All 2 branches covered.">                    &amp;&amp; !immutableClassCanonicalNames.contains(typeName);</span>
+            });
+    }
+
+    /**
+     * Checks whether current field is final.
+     *
+     * @param variableDef field in consideration.
+     * @return true if current field is final.
+     */
+    private static boolean isFinalField(DetailAST variableDef) {
+<span class="fc" id="L680">        final DetailAST modifiers = variableDef.findFirstToken(TokenTypes.MODIFIERS);</span>
+<span class="fc bfc" id="L681" title="All 2 branches covered.">        return modifiers.findFirstToken(TokenTypes.FINAL) != null;</span>
+    }
+
+    /**
+     * Checks if current type is primitive type (int, short, float, boolean, double, etc.).
+     * As primitive types have special tokens for each one, such as:
+     * LITERAL_INT, LITERAL_BOOLEAN, etc.
+     * So, if type's identifier differs from {@link TokenTypes#IDENT IDENT} token - it's a
+     * primitive type.
+     *
+     * @param type Ast {@link TokenTypes#TYPE TYPE} node.
+     * @return true if current type is primitive type.
+     */
+    private static boolean isPrimitive(DetailAST type) {
+<span class="fc bfc" id="L695" title="All 2 branches covered.">        return type.getFirstChild().getType() != TokenTypes.IDENT;</span>
+    }
+
+    /**
+     * Gets canonical type's name from given {@link TokenTypes#TYPE TYPE} node.
+     *
+     * @param type DetailAST {@link TokenTypes#TYPE TYPE} node.
+     * @return canonical type's name
+     */
+    private static String getCanonicalName(DetailAST type) {
+<span class="fc" id="L705">        final StringBuilder canonicalNameBuilder = new StringBuilder(256);</span>
+<span class="fc" id="L706">        DetailAST toVisit = type;</span>
+<span class="fc bfc" id="L707" title="All 2 branches covered.">        while (toVisit != null) {</span>
+<span class="fc" id="L708">            toVisit = getNextSubTreeNode(toVisit, type);</span>
+<span class="fc bfc" id="L709" title="All 4 branches covered.">            if (toVisit != null &amp;&amp; toVisit.getType() == TokenTypes.IDENT) {</span>
+<span class="fc bfc" id="L710" title="All 2 branches covered.">                if (canonicalNameBuilder.length() &gt; 0) {</span>
+<span class="fc" id="L711">                    canonicalNameBuilder.append('.');</span>
+                }
+<span class="fc" id="L713">                canonicalNameBuilder.append(toVisit.getText());</span>
+<span class="fc" id="L714">                final DetailAST nextSubTreeNode = getNextSubTreeNode(toVisit, type);</span>
+<span class="fc bfc" id="L715" title="All 2 branches covered.">                if (nextSubTreeNode != null</span>
+<span class="fc bfc" id="L716" title="All 2 branches covered.">                        &amp;&amp; nextSubTreeNode.getType() == TokenTypes.TYPE_ARGUMENTS) {</span>
+<span class="fc" id="L717">                    break;</span>
+                }
+<span class="fc" id="L719">            }</span>
+        }
+<span class="fc" id="L721">        return canonicalNameBuilder.toString();</span>
+    }
+
+    /**
+     * Gets the next node of a syntactical tree (child of a current node or
+     * sibling of a current node, or sibling of a parent of a current node).
+     *
+     * @param currentNodeAst Current node in considering
+     * @param subTreeRootAst SubTree root
+     * @return Current node after bypassing, if current node reached the root of a subtree
+     *        method returns null
+     */
+    private static DetailAST
+        getNextSubTreeNode(DetailAST currentNodeAst, DetailAST subTreeRootAst) {
+<span class="fc" id="L735">        DetailAST currentNode = currentNodeAst;</span>
+<span class="fc" id="L736">        DetailAST toVisitAst = currentNode.getFirstChild();</span>
+<span class="fc bfc" id="L737" title="All 2 branches covered.">        while (toVisitAst == null) {</span>
+<span class="fc" id="L738">            toVisitAst = currentNode.getNextSibling();</span>
+<span class="fc bfc" id="L739" title="All 2 branches covered.">            if (currentNode.getParent().getColumnNo() == subTreeRootAst.getColumnNo()) {</span>
+<span class="fc" id="L740">                break;</span>
+            }
+<span class="fc" id="L742">            currentNode = currentNode.getParent();</span>
+        }
+<span class="fc" id="L744">        return toVisitAst;</span>
+    }
+
+    /**
+     * Converts canonical class names to short names.
+     *
+     * @param canonicalClassNames the set of canonical class names.
+     * @return the set of short names of classes.
+     */
+    private static Set&lt;String&gt; getClassShortNames(Set&lt;String&gt; canonicalClassNames) {
+<span class="fc" id="L754">        return canonicalClassNames.stream()</span>
+<span class="fc" id="L755">            .map(CommonUtil::baseClassName)</span>
+<span class="fc" id="L756">            .collect(Collectors.toCollection(HashSet::new));</span>
+    }
+
+    /**
+     * Gets the short class name from given canonical name.
+     *
+     * @param canonicalClassName canonical class name.
+     * @return short name of class.
+     */
+    private static String getClassShortName(String canonicalClassName) {
+<span class="fc" id="L766">        return canonicalClassName</span>
+<span class="fc" id="L767">                .substring(canonicalClassName.lastIndexOf('.') + 1);</span>
+    }
+
+    /**
+     * Checks whether the AST is annotated with
+     * an annotation containing the passed in regular
+     * expression and return the AST representing that
+     * annotation.
+     *
+     * &lt;p&gt;
+     * This method will not look for imports or package
+     * statements to detect the passed in annotation.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * To check if an AST contains a passed in annotation
+     * taking into account fully-qualified names
+     * (ex: java.lang.Override, Override)
+     * this method will need to be called twice. Once for each
+     * name given.
+     * &lt;/p&gt;
+     *
+     * @param variableDef {@link TokenTypes#VARIABLE_DEF variable def node}.
+     * @return the AST representing the first such annotation or null if
+     *         no such annotation was found
+     */
+    private DetailAST findMatchingAnnotation(DetailAST variableDef) {
+<span class="fc" id="L794">        DetailAST matchingAnnotation = null;</span>
+
+<span class="fc" id="L796">        final DetailAST holder = AnnotationUtil.getAnnotationHolder(variableDef);</span>
+
+<span class="fc" id="L798">        for (DetailAST child = holder.getFirstChild();</span>
+<span class="fc bfc" id="L799" title="All 2 branches covered.">            child != null; child = child.getNextSibling()) {</span>
+<span class="fc bfc" id="L800" title="All 2 branches covered.">            if (child.getType() == TokenTypes.ANNOTATION) {</span>
+<span class="fc" id="L801">                final DetailAST ast = child.getFirstChild();</span>
+<span class="fc" id="L802">                final String name =</span>
+<span class="fc" id="L803">                    FullIdent.createFullIdent(ast.getNextSibling()).getText();</span>
+<span class="fc bfc" id="L804" title="All 2 branches covered.">                if (ignoreAnnotationCanonicalNames.contains(name)</span>
+<span class="fc bfc" id="L805" title="All 2 branches covered.">                         || ignoreAnnotationShortNames.contains(name)) {</span>
+<span class="fc" id="L806">                    matchingAnnotation = child;</span>
+<span class="fc" id="L807">                    break;</span>
+                }
+            }
+        }
+
+<span class="fc" id="L812">        return matchingAnnotation;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

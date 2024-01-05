@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ParameterNameCheck.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.checks.naming</a> &gt; <span class="el_source">ParameterNameCheck.java</span></div><h1>ParameterNameCheck.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.checks.naming;
+
+import java.util.Arrays;
+import java.util.Optional;
+
+import com.puppycrawl.tools.checkstyle.api.DetailAST;
+import com.puppycrawl.tools.checkstyle.api.TokenTypes;
+import com.puppycrawl.tools.checkstyle.utils.CheckUtil;
+
+/**
+ * &lt;p&gt;
+ * Checks that method parameter names conform to a specified pattern.
+ * By using {@code accessModifiers} property it is possible
+ * to specify different formats for methods at different visibility levels.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * To validate {@code catch} parameters please use
+ * &lt;a href=&quot;https://checkstyle.org/checks/naming/catchparametername.html#CatchParameterName&quot;&gt;
+ * CatchParameterName&lt;/a&gt;.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * To validate lambda parameters please use
+ * &lt;a href=&quot;https://checkstyle.org/checks/naming/lambdaparametername.html#LambdaParameterName&quot;&gt;
+ * LambdaParameterName&lt;/a&gt;.
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * Property {@code accessModifiers} - Access modifiers of methods where parameters are
+ * checked.
+ * Type is {@code com.puppycrawl.tools.checkstyle.checks.naming.AccessModifierOption[]}.
+ * Default value is {@code public, protected, package, private}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code format} - Specifies valid identifiers.
+ * Type is {@code java.util.regex.Pattern}.
+ * Default value is {@code &quot;^[a-z][a-zA-Z0-9]*$&quot;}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code ignoreOverridden} - Allows to skip methods with Override annotation from
+ * validation.
+ * Type is {@code boolean}.
+ * Default value is {@code false}.
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Parent is {@code com.puppycrawl.tools.checkstyle.TreeWalker}
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Violation Message Keys:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * {@code name.invalidPattern}
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * @since 3.0
+ */
+public class ParameterNameCheck extends AbstractNameCheck {
+
+    /**
+     * Allows to skip methods with Override annotation from validation.
+     */
+    private boolean ignoreOverridden;
+
+    /** Access modifiers of methods where parameters are checked. */
+<span class="fc" id="L86">    private AccessModifierOption[] accessModifiers = {</span>
+        AccessModifierOption.PUBLIC,
+        AccessModifierOption.PROTECTED,
+        AccessModifierOption.PACKAGE,
+        AccessModifierOption.PRIVATE,
+    };
+
+    /**
+     * Creates a new {@code ParameterNameCheck} instance.
+     */
+    public ParameterNameCheck() {
+<span class="fc" id="L97">        super(&quot;^[a-z][a-zA-Z0-9]*$&quot;);</span>
+<span class="fc" id="L98">    }</span>
+
+    /**
+     * Setter to allows to skip methods with Override annotation from validation.
+     *
+     * @param ignoreOverridden Flag for skipping methods with Override annotation.
+     * @since 6.12.1
+     */
+    public void setIgnoreOverridden(boolean ignoreOverridden) {
+<span class="fc" id="L107">        this.ignoreOverridden = ignoreOverridden;</span>
+<span class="fc" id="L108">    }</span>
+
+    /**
+     * Setter to access modifiers of methods where parameters are checked.
+     *
+     * @param accessModifiers access modifiers of methods which should be checked.
+     * @since 7.5
+     */
+    public void setAccessModifiers(AccessModifierOption... accessModifiers) {
+<span class="fc" id="L117">        this.accessModifiers =</span>
+<span class="fc" id="L118">            Arrays.copyOf(accessModifiers, accessModifiers.length);</span>
+<span class="fc" id="L119">    }</span>
+
+    @Override
+    public int[] getDefaultTokens() {
+<span class="fc" id="L123">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+<span class="fc" id="L128">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getRequiredTokens() {
+<span class="fc" id="L133">        return new int[] {TokenTypes.PARAMETER_DEF};</span>
+    }
+
+    @Override
+    protected boolean mustCheckName(DetailAST ast) {
+<span class="fc" id="L138">        boolean checkName = true;</span>
+<span class="fc" id="L139">        final DetailAST parent = ast.getParent();</span>
+<span class="fc bfc" id="L140" title="All 4 branches covered.">        if (ignoreOverridden &amp;&amp; isOverriddenMethod(ast)</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">                || parent.getType() == TokenTypes.LITERAL_CATCH</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">                || parent.getParent().getType() == TokenTypes.LAMBDA</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">                || CheckUtil.isReceiverParameter(ast)</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">                || !matchAccessModifiers(</span>
+<span class="fc" id="L145">                        CheckUtil.getAccessModifierFromModifiersToken(parent.getParent()))) {</span>
+<span class="fc" id="L146">            checkName = false;</span>
+        }
+<span class="fc" id="L148">        return checkName;</span>
+    }
+
+    /**
+     * Checks whether a method has the correct access modifier to be checked.
+     *
+     * @param accessModifier the access modifier of the method.
+     * @return whether the method matches the expected access modifier.
+     */
+    private boolean matchAccessModifiers(final AccessModifierOption accessModifier) {
+<span class="fc" id="L158">        return Arrays.stream(accessModifiers)</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">                .anyMatch(modifier -&gt; modifier == accessModifier);</span>
+    }
+
+    /**
+     * Checks whether a method is annotated with Override annotation.
+     *
+     * @param ast method parameter definition token.
+     * @return true if a method is annotated with Override annotation.
+     */
+    private static boolean isOverriddenMethod(DetailAST ast) {
+<span class="fc" id="L169">        boolean overridden = false;</span>
+
+<span class="fc" id="L171">        final DetailAST parent = ast.getParent().getParent();</span>
+<span class="fc" id="L172">        final Optional&lt;DetailAST&gt; annotation =</span>
+<span class="fc" id="L173">            Optional.ofNullable(parent.getFirstChild().getFirstChild());</span>
+
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        if (annotation.isPresent()) {</span>
+<span class="fc" id="L176">            final Optional&lt;DetailAST&gt; overrideToken =</span>
+<span class="fc" id="L177">                Optional.ofNullable(annotation.orElseThrow().findFirstToken(TokenTypes.IDENT));</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">            if (overrideToken.isPresent()</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">                &amp;&amp; &quot;Override&quot;.equals(overrideToken.orElseThrow().getText())) {</span>
+<span class="fc" id="L180">                overridden = true;</span>
+            }
+        }
+<span class="fc" id="L183">        return overridden;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

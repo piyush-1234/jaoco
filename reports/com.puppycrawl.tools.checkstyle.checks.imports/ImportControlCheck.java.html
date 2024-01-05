@@ -1,0 +1,324 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ImportControlCheck.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.checks.imports</a> &gt; <span class="el_source">ImportControlCheck.java</span></div><h1>ImportControlCheck.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.checks.imports;
+
+import java.net.URI;
+import java.util.Collections;
+import java.util.Set;
+import java.util.regex.Pattern;
+
+import com.puppycrawl.tools.checkstyle.FileStatefulCheck;
+import com.puppycrawl.tools.checkstyle.api.AbstractCheck;
+import com.puppycrawl.tools.checkstyle.api.CheckstyleException;
+import com.puppycrawl.tools.checkstyle.api.DetailAST;
+import com.puppycrawl.tools.checkstyle.api.ExternalResourceHolder;
+import com.puppycrawl.tools.checkstyle.api.FullIdent;
+import com.puppycrawl.tools.checkstyle.api.TokenTypes;
+
+/**
+ * &lt;p&gt;
+ * Controls what can be imported in each package and file. Useful for ensuring
+ * that application layering rules are not violated, especially on large projects.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * You can control imports based on the package name or based on the file name.
+ * When controlling packages, all files and sub-packages in the declared package
+ * will be controlled by this check. To specify differences between a main package
+ * and a sub-package, you must define the sub-package inside the main package.
+ * When controlling file, only the file name is considered and only files processed by
+ * &lt;a href=&quot;https://checkstyle.org/config.html#TreeWalker&quot;&gt;TreeWalker&lt;/a&gt;.
+ * The file's extension is ignored.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Short description of the behaviour:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * Check starts checking from the longest matching subpackage (later 'current subpackage') or
+ * the first file name match described inside import control file to package defined in class file.
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * The longest matching subpackage is found by starting with the root package and
+ * examining if any of the sub-packages or file definitions match the current
+ * class' package or file name.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * If a file name is matched first, that is considered the longest match and becomes
+ * the current file/subpackage.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * If another subpackage is matched, then it's subpackages and file names are examined
+ * for the next longest match and the process repeats recursively.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * If no subpackages or file names are matched, the current subpackage is then used.
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Order of rules in the same subpackage/root are defined by the order of declaration
+ * in the XML file, which is from top (first) to bottom (last).
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * If there is matching allow/disallow rule inside the current file/subpackage
+ * then the Check returns the first &quot;allowed&quot; or &quot;disallowed&quot; message.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * If there is no matching allow/disallow rule inside the current file/subpackage
+ * then it continues checking in the parent subpackage.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * If there is no matching allow/disallow rule in any of the files/subpackages,
+ * including the root level (import-control), then the import is disallowed by default.
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * The DTD for an import control XML document is at
+ * &lt;a href=&quot;https://checkstyle.org/dtds/import_control_1_4.dtd&quot;&gt;
+ * https://checkstyle.org/dtds/import_control_1_4.dtd&lt;/a&gt;.
+ * It contains documentation on each of the elements and attributes.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The check validates a XML document when it loads the document. To validate against
+ * the above DTD, include the following document type declaration in your XML document:
+ * &lt;/p&gt;
+ * &lt;pre&gt;
+ * &amp;lt;!DOCTYPE import-control PUBLIC
+ *     &quot;-//Checkstyle//DTD ImportControl Configuration 1.4//EN&quot;
+ *     &quot;https://checkstyle.org/dtds/import_control_1_4.dtd&quot;&amp;gt;
+ * &lt;/pre&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * Property {@code file} - Specify the location of the file containing the
+ * import control configuration. It can be a regular file, URL or resource path.
+ * It will try loading the path as a URL first, then as a file, and finally as a resource.
+ * Type is {@code java.net.URI}.
+ * Default value is {@code null}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code path} - Specify the regular expression of file paths to which
+ * this check should apply. Files that don't match the pattern will not be checked.
+ * The pattern will be matched against the full absolute file path.
+ * Type is {@code java.util.regex.Pattern}.
+ * Default value is {@code &quot;.*&quot;}.
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Parent is {@code com.puppycrawl.tools.checkstyle.TreeWalker}
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Violation Message Keys:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * {@code import.control.disallowed}
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * {@code import.control.missing.file}
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * {@code import.control.unknown.pkg}
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * @since 4.0
+ */
+@FileStatefulCheck
+<span class="fc" id="L144">public class ImportControlCheck extends AbstractCheck implements ExternalResourceHolder {</span>
+
+    /**
+     * A key is pointing to the warning message text in &quot;messages.properties&quot;
+     * file.
+     */
+    public static final String MSG_MISSING_FILE = &quot;import.control.missing.file&quot;;
+
+    /**
+     * A key is pointing to the warning message text in &quot;messages.properties&quot;
+     * file.
+     */
+    public static final String MSG_UNKNOWN_PKG = &quot;import.control.unknown.pkg&quot;;
+
+    /**
+     * A key is pointing to the warning message text in &quot;messages.properties&quot;
+     * file.
+     */
+    public static final String MSG_DISALLOWED = &quot;import.control.disallowed&quot;;
+
+    /**
+     * A part of message for exception.
+     */
+    private static final String UNABLE_TO_LOAD = &quot;Unable to load &quot;;
+
+    /**
+     * Specify the location of the file containing the import control configuration.
+     * It can be a regular file, URL or resource path. It will try loading the path
+     * as a URL first, then as a file, and finally as a resource.
+     */
+    private URI file;
+
+    /**
+     * Specify the regular expression of file paths to which this check should apply.
+     * Files that don't match the pattern will not be checked. The pattern will
+     * be matched against the full absolute file path.
+     */
+<span class="fc" id="L181">    private Pattern path = Pattern.compile(&quot;.*&quot;);</span>
+    /** Whether to process the current file. */
+    private boolean processCurrentFile;
+
+    /** The root package controller. */
+    private PkgImportControl root;
+    /** The package doing the import. */
+    private String packageName;
+    /** The file name doing the import. */
+    private String fileName;
+
+    /**
+     * The package controller for the current file. Used for performance
+     * optimisation.
+     */
+    private AbstractImportControl currentImportControl;
+
+    @Override
+    public int[] getDefaultTokens() {
+<span class="fc" id="L200">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+<span class="fc" id="L205">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getRequiredTokens() {
+<span class="fc" id="L210">        return new int[] {TokenTypes.PACKAGE_DEF, TokenTypes.IMPORT, TokenTypes.STATIC_IMPORT, };</span>
+    }
+
+    // suppress deprecation until https://github.com/checkstyle/checkstyle/issues/11166
+    @SuppressWarnings(&quot;deprecation&quot;)
+    @Override
+    public void beginTree(DetailAST rootAST) {
+<span class="fc" id="L217">        currentImportControl = null;</span>
+<span class="fc" id="L218">        processCurrentFile = path.matcher(getFilePath()).find();</span>
+<span class="fc" id="L219">        fileName = getFileContents().getText().getFile().getName();</span>
+
+<span class="fc" id="L221">        final int period = fileName.lastIndexOf('.');</span>
+
+<span class="fc bfc" id="L223" title="All 2 branches covered.">        if (period != -1) {</span>
+<span class="fc" id="L224">            fileName = fileName.substring(0, period);</span>
+        }
+<span class="fc" id="L226">    }</span>
+
+    @Override
+    public void visitToken(DetailAST ast) {
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        if (processCurrentFile) {</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">            if (ast.getType() == TokenTypes.PACKAGE_DEF) {</span>
+<span class="fc bfc" id="L232" title="All 2 branches covered.">                if (root == null) {</span>
+<span class="fc" id="L233">                    log(ast, MSG_MISSING_FILE);</span>
+                }
+                else {
+<span class="fc" id="L236">                    packageName = getPackageText(ast);</span>
+<span class="fc" id="L237">                    currentImportControl = root.locateFinest(packageName, fileName);</span>
+<span class="fc bfc" id="L238" title="All 2 branches covered.">                    if (currentImportControl == null) {</span>
+<span class="fc" id="L239">                        log(ast, MSG_UNKNOWN_PKG);</span>
+                    }
+                }
+            }
+<span class="fc bfc" id="L243" title="All 2 branches covered.">            else if (currentImportControl != null) {</span>
+<span class="fc" id="L244">                final String importText = getImportText(ast);</span>
+<span class="fc" id="L245">                final AccessResult access = currentImportControl.checkAccess(packageName, fileName,</span>
+                        importText);
+<span class="fc bfc" id="L247" title="All 2 branches covered.">                if (access != AccessResult.ALLOWED) {</span>
+<span class="fc" id="L248">                    log(ast, MSG_DISALLOWED, importText);</span>
+                }
+            }
+        }
+<span class="fc" id="L252">    }</span>
+
+    @Override
+    public Set&lt;String&gt; getExternalResourceLocations() {
+<span class="fc" id="L256">        return Collections.singleton(file.toString());</span>
+    }
+
+    /**
+     * Returns package text.
+     *
+     * @param ast PACKAGE_DEF ast node
+     * @return String that represents full package name
+     */
+    private static String getPackageText(DetailAST ast) {
+<span class="fc" id="L266">        final DetailAST nameAST = ast.getLastChild().getPreviousSibling();</span>
+<span class="fc" id="L267">        return FullIdent.createFullIdent(nameAST).getText();</span>
+    }
+
+    /**
+     * Returns import text.
+     *
+     * @param ast ast node that represents import
+     * @return String that represents importing class
+     */
+    private static String getImportText(DetailAST ast) {
+        final FullIdent imp;
+<span class="fc bfc" id="L278" title="All 2 branches covered.">        if (ast.getType() == TokenTypes.IMPORT) {</span>
+<span class="fc" id="L279">            imp = FullIdent.createFullIdentBelow(ast);</span>
+        }
+        else {
+            // know it is a static import
+<span class="fc" id="L283">            imp = FullIdent.createFullIdent(ast</span>
+<span class="fc" id="L284">                    .getFirstChild().getNextSibling());</span>
+        }
+<span class="fc" id="L286">        return imp.getText();</span>
+    }
+
+    /**
+     * Setter to specify the location of the file containing the import control configuration.
+     * It can be a regular file, URL or resource path. It will try loading the path
+     * as a URL first, then as a file, and finally as a resource.
+     *
+     * @param uri the uri of the file to load.
+     * @throws IllegalArgumentException on error loading the file.
+     * @since 4.0
+     */
+    public void setFile(URI uri) {
+        // Handle empty param
+<span class="fc bfc" id="L300" title="All 2 branches covered.">        if (uri != null) {</span>
+            try {
+<span class="fc" id="L302">                root = ImportControlLoader.load(uri);</span>
+<span class="fc" id="L303">                file = uri;</span>
+            }
+<span class="fc" id="L305">            catch (CheckstyleException ex) {</span>
+<span class="fc" id="L306">                throw new IllegalArgumentException(UNABLE_TO_LOAD + uri, ex);</span>
+<span class="fc" id="L307">            }</span>
+        }
+<span class="fc" id="L309">    }</span>
+
+    /**
+     * Setter to specify the regular expression of file paths to which this check should apply.
+     * Files that don't match the pattern will not be checked. The pattern will be matched
+     * against the full absolute file path.
+     *
+     * @param pattern the file path regex this check should apply to.
+     * @since 7.5
+     */
+    public void setPath(Pattern pattern) {
+<span class="fc" id="L320">        path = pattern;</span>
+<span class="fc" id="L321">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

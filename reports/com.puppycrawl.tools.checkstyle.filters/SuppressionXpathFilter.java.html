@@ -1,0 +1,285 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SuppressionXpathFilter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.filters</a> &gt; <span class="el_source">SuppressionXpathFilter.java</span></div><h1>SuppressionXpathFilter.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.filters;
+
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Objects;
+import java.util.Set;
+
+import com.puppycrawl.tools.checkstyle.AbstractAutomaticBean;
+import com.puppycrawl.tools.checkstyle.TreeWalkerAuditEvent;
+import com.puppycrawl.tools.checkstyle.TreeWalkerFilter;
+import com.puppycrawl.tools.checkstyle.api.CheckstyleException;
+import com.puppycrawl.tools.checkstyle.api.ExternalResourceHolder;
+import com.puppycrawl.tools.checkstyle.utils.FilterUtil;
+
+/**
+ * &lt;p&gt;
+ * Filter {@code SuppressionXpathFilter} works as
+ * &lt;a href=&quot;https://checkstyle.org/filters/suppressionfilter.html#SuppressionFilter&quot;&gt;
+ * SuppressionFilter&lt;/a&gt;.
+ * Additionally, filter processes {@code suppress-xpath} elements,
+ * which contains xpath-expressions. Xpath-expressions are queries for
+ * suppressed nodes inside the AST tree.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Currently, filter does not support the following checks:
+ * &lt;/p&gt;
+ * &lt;ul id=&quot;IncompatibleChecks&quot;&gt;
+ * &lt;li&gt;
+ * NoCodeInFile (reason is that AST is not generated for a file not containing code)
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Regexp (reason is at
+ * &lt;a href=&quot;https://github.com/checkstyle/checkstyle/issues/7759#issuecomment-605525287&quot;&gt; #7759&lt;/a&gt;)
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * RegexpSinglelineJava (reason is at
+ * &lt;a href=&quot;https://github.com/checkstyle/checkstyle/issues/7759#issuecomment-605525287&quot;&gt; #7759&lt;/a&gt;)
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Also, the filter does not support suppressions inside javadoc reported by Javadoc checks:
+ * &lt;/p&gt;
+ * &lt;ul id=&quot;JavadocChecks&quot;&gt;
+ * &lt;li&gt;
+ * AtclauseOrder
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * JavadocBlockTagLocation
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * JavadocMethod
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * JavadocMissingLeadingAsterisk
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * JavadocMissingWhitespaceAfterAsterisk
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * JavadocParagraph
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * JavadocStyle
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * JavadocTagContinuationIndentation
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * JavadocType
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * MissingDeprecated
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * NonEmptyAtclauseDescription
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * RequireEmptyLineBeforeBlockTagGroup
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * SingleLineJavadoc
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * SummaryJavadoc
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * WriteTag
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Note, that support for these Checks will be available after resolving issue
+ * &lt;a href=&quot;https://github.com/checkstyle/checkstyle/issues/5770&quot;&gt;#5770&lt;/a&gt;.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Currently, filter supports the following xpath axes:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * ancestor
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * ancestor-or-self
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * attribute
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * child
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * descendant
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * descendant-or-self
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * following
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * following-sibling
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * parent
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * preceding
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * preceding-sibling
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * self
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * You can use the command line helper tool to generate xpath suppressions based on your
+ * configuration file and input files. See &lt;a href=&quot;https://checkstyle.org/cmdline.html&quot;&gt;here&lt;/a&gt;
+ * for more details.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The suppression file location is checked in following order:
+ * &lt;/p&gt;
+ * &lt;ol&gt;
+ * &lt;li&gt;
+ * as a filesystem location
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * if no file found, and the location starts with either {@code http://} or {@code https://},
+ * then it is interpreted as a URL
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * if no file found, then passed to the {@code ClassLoader.getResource()} method.
+ * &lt;/li&gt;
+ * &lt;/ol&gt;
+ * &lt;p&gt;
+ * SuppressionXpathFilter can suppress Checks that have Treewalker as parent module.
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * Property {@code file} - Specify the location of the &lt;em&gt;suppressions XML document&lt;/em&gt; file.
+ * Type is {@code java.lang.String}.
+ * Default value is {@code null}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code optional} - Control what to do when the file is not existing.
+ * If optional is set to false the file must exist, or else it ends with error.
+ * On the other hand if optional is true and file is not found, the filter accepts all audit events.
+ * Type is {@code boolean}.
+ * Default value is {@code false}.
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Parent is {@code com.puppycrawl.tools.checkstyle.TreeWalker}
+ * &lt;/p&gt;
+ *
+ * @since 8.6
+ */
+<span class="fc" id="L197">public class SuppressionXpathFilter extends AbstractAutomaticBean implements</span>
+        TreeWalkerFilter, ExternalResourceHolder {
+
+    /** Set of individual xpath suppresses. */
+<span class="fc" id="L201">    private final Set&lt;TreeWalkerFilter&gt; filters = new HashSet&lt;&gt;();</span>
+
+    /** Specify the location of the &lt;em&gt;suppressions XML document&lt;/em&gt; file. */
+    private String file;
+    /**
+     * Control what to do when the file is not existing.
+     * If optional is set to false the file must exist, or else it ends with error.
+     * On the other hand if optional is true and file is not found,
+     * the filter accepts all audit events.
+     */
+    private boolean optional;
+
+    /**
+     * Setter to specify the location of the &lt;em&gt;suppressions XML document&lt;/em&gt; file.
+     *
+     * @param fileName name of the suppressions file.
+     * @since 8.6
+     */
+    public void setFile(String fileName) {
+<span class="fc" id="L220">        file = fileName;</span>
+<span class="fc" id="L221">    }</span>
+
+    /**
+     * Setter to control what to do when the file is not existing.
+     * If optional is set to false the file must exist, or else it ends with error.
+     * On the other hand if optional is true and file is not found,
+     * the filter accepts all audit events.
+     *
+     * @param optional tells if config file existence is optional.
+     * @since 8.6
+     */
+    public void setOptional(boolean optional) {
+<span class="fc" id="L233">        this.optional = optional;</span>
+<span class="fc" id="L234">    }</span>
+
+    @Override
+    public boolean equals(Object obj) {
+<span class="fc bfc" id="L238" title="All 2 branches covered.">        if (this == obj) {</span>
+<span class="fc" id="L239">            return true;</span>
+        }
+<span class="fc bfc" id="L241" title="All 4 branches covered.">        if (obj == null || getClass() != obj.getClass()) {</span>
+<span class="fc" id="L242">            return false;</span>
+        }
+<span class="fc" id="L244">        final SuppressionXpathFilter suppressionXpathFilter = (SuppressionXpathFilter) obj;</span>
+<span class="fc" id="L245">        return Objects.equals(filters, suppressionXpathFilter.filters);</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="fc" id="L250">        return Objects.hash(filters);</span>
+    }
+
+    @Override
+    public boolean accept(TreeWalkerAuditEvent treeWalkerAuditEvent) {
+<span class="fc" id="L255">        boolean result = true;</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">        for (TreeWalkerFilter filter : filters) {</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">            if (!filter.accept(treeWalkerAuditEvent)) {</span>
+<span class="fc" id="L258">                result = false;</span>
+<span class="fc" id="L259">                break;</span>
+            }
+<span class="fc" id="L261">        }</span>
+<span class="fc" id="L262">        return result;</span>
+    }
+
+    @Override
+    public Set&lt;String&gt; getExternalResourceLocations() {
+<span class="fc" id="L267">        return Collections.singleton(file);</span>
+    }
+
+    @Override
+    protected void finishLocalSetup() throws CheckstyleException {
+<span class="fc bfc" id="L272" title="All 2 branches covered.">        if (file != null) {</span>
+<span class="fc bfc" id="L273" title="All 2 branches covered.">            if (optional) {</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">                if (FilterUtil.isFileExists(file)) {</span>
+<span class="fc" id="L275">                    filters.addAll(SuppressionsLoader.loadXpathSuppressions(file));</span>
+                }
+            }
+            else {
+<span class="fc" id="L279">                filters.addAll(SuppressionsLoader.loadXpathSuppressions(file));</span>
+            }
+        }
+<span class="fc" id="L282">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

@@ -1,0 +1,449 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SuppressWithNearbyTextFilter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.filters</a> &gt; <span class="el_source">SuppressWithNearbyTextFilter.java</span></div><h1>SuppressWithNearbyTextFilter.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.filters;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
+
+import com.puppycrawl.tools.checkstyle.AbstractAutomaticBean;
+import com.puppycrawl.tools.checkstyle.PropertyType;
+import com.puppycrawl.tools.checkstyle.XdocsPropertyType;
+import com.puppycrawl.tools.checkstyle.api.AuditEvent;
+import com.puppycrawl.tools.checkstyle.api.FileText;
+import com.puppycrawl.tools.checkstyle.api.Filter;
+import com.puppycrawl.tools.checkstyle.utils.CommonUtil;
+
+/**
+ * &lt;p&gt;
+ * Filter {@code SuppressWithNearbyTextFilter} uses plain text to suppress
+ * nearby audit events. The filter can suppress all checks which have Checker as a parent module.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Setting {@code .*} value to {@code nearbyTextPattern} property will see &lt;b&gt;any&lt;/b&gt;
+ * text as a suppression and will likely suppress all audit events in the file. It is
+ * best to set this to a key phrase not commonly used in the file to help denote it
+ * out of the rest of the file as a suppression. See the default value as an example.
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * Property {@code checkPattern} - Specify check name pattern to suppress.
+ * Property can also be a RegExp group index at {@code nearbyTextPattern} in
+ * format of {@code $x} and be picked from line that matches {@code nearbyTextPattern}.
+ * Type is {@code java.util.regex.Pattern}.
+ * Default value is {@code &quot;.*&quot;}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code idPattern} - Specify check ID pattern to suppress.
+ * Type is {@code java.util.regex.Pattern}.
+ * Default value is {@code null}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code lineRange} - Specify negative/zero/positive value that
+ * defines the number of lines preceding/at/following the suppressing nearby text.
+ * Property can also be a RegExp group index at {@code nearbyTextPattern} in
+ * format of {@code $x} and be picked from line that matches {@code nearbyTextPattern}.
+ * Type is {@code java.lang.String}.
+ * Default value is {@code &quot;0&quot;}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code messagePattern} - Specify check violation message pattern to suppress.
+ * Type is {@code java.util.regex.Pattern}.
+ * Default value is {@code null}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code nearbyTextPattern} - Specify nearby text
+ * pattern to trigger filter to begin suppression.
+ * Type is {@code java.util.regex.Pattern}.
+ * Default value is {@code &quot;SUPPRESS CHECKSTYLE (\w+)&quot;}.
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Parent is {@code com.puppycrawl.tools.checkstyle.Checker}
+ * &lt;/p&gt;
+ *
+ * @since 10.10.0
+ */
+<span class="fc" id="L91">public class SuppressWithNearbyTextFilter extends AbstractAutomaticBean implements Filter {</span>
+
+    /** Default nearby text pattern to turn check reporting off. */
+    private static final String DEFAULT_NEARBY_TEXT_PATTERN = &quot;SUPPRESS CHECKSTYLE (\\w+)&quot;;
+
+    /** Default regex for checks that should be suppressed. */
+    private static final String DEFAULT_CHECK_PATTERN = &quot;.*&quot;;
+
+    /** Default number of lines that should be suppressed. */
+    private static final String DEFAULT_LINE_RANGE = &quot;0&quot;;
+
+    /** Suppressions encountered in current file. */
+<span class="fc" id="L103">    private final List&lt;Suppression&gt; suppressions = new ArrayList&lt;&gt;();</span>
+
+    /** Specify nearby text pattern to trigger filter to begin suppression. */
+<span class="fc" id="L106">    @XdocsPropertyType(PropertyType.PATTERN)</span>
+<span class="fc" id="L107">    private Pattern nearbyTextPattern = Pattern.compile(DEFAULT_NEARBY_TEXT_PATTERN);</span>
+
+    /**
+     * Specify check name pattern to suppress. Property can also be a RegExp group index
+     * at {@code nearbyTextPattern} in format of {@code $x} and be picked from line that
+     * matches {@code nearbyTextPattern}.
+     */
+<span class="fc" id="L114">    @XdocsPropertyType(PropertyType.PATTERN)</span>
+    private String checkPattern = DEFAULT_CHECK_PATTERN;
+
+    /** Specify check violation message pattern to suppress. */
+    @XdocsPropertyType(PropertyType.PATTERN)
+    private String messagePattern;
+
+    /** Specify check ID pattern to suppress. */
+    @XdocsPropertyType(PropertyType.PATTERN)
+    private String idPattern;
+
+    /**
+     * Specify negative/zero/positive value that defines the number of lines
+     * preceding/at/following the suppressing nearby text. Property can also be a RegExp group
+     * index at {@code nearbyTextPattern} in format of {@code $x} and be picked
+     * from line that matches {@code nearbyTextPattern}.
+     */
+<span class="fc" id="L131">    private String lineRange = DEFAULT_LINE_RANGE;</span>
+
+    /** The absolute path to the currently processed file. */
+<span class="fc" id="L134">    private String cachedFileAbsolutePath = &quot;&quot;;</span>
+
+    /**
+     * Setter to specify nearby text pattern to trigger filter to begin suppression.
+     *
+     * @param pattern a {@code Pattern} value.
+     * @since 10.10.0
+     */
+    public final void setNearbyTextPattern(Pattern pattern) {
+<span class="fc" id="L143">        nearbyTextPattern = pattern;</span>
+<span class="fc" id="L144">    }</span>
+
+    /**
+     * Setter to specify check name pattern to suppress. Property can also
+     * be a RegExp group index at {@code nearbyTextPattern} in
+     * format of {@code $x} and be picked from line that matches {@code nearbyTextPattern}.
+     *
+     * @param pattern a {@code String} value.
+     * @since 10.10.0
+     */
+    public final void setCheckPattern(String pattern) {
+<span class="fc" id="L155">        checkPattern = pattern;</span>
+<span class="fc" id="L156">    }</span>
+
+    /**
+     * Setter to specify check violation message pattern to suppress.
+     *
+     * @param pattern a {@code String} value.
+     * @since 10.10.0
+     */
+    public void setMessagePattern(String pattern) {
+<span class="fc" id="L165">        messagePattern = pattern;</span>
+<span class="fc" id="L166">    }</span>
+
+    /**
+     * Setter to specify check ID pattern to suppress.
+     *
+     * @param pattern a {@code String} value.
+     * @since 10.10.0
+     */
+    public void setIdPattern(String pattern) {
+<span class="fc" id="L175">        idPattern = pattern;</span>
+<span class="fc" id="L176">    }</span>
+
+    /**
+     * Setter to specify negative/zero/positive value that defines the number
+     * of lines preceding/at/following the suppressing nearby text. Property can also
+     * be a RegExp group index at {@code nearbyTextPattern} in
+     * format of {@code $x} and be picked from line that matches {@code nearbyTextPattern}.
+     *
+     * @param format a {@code String} value.
+     * @since 10.10.0
+     */
+    public final void setLineRange(String format) {
+<span class="fc" id="L188">        lineRange = format;</span>
+<span class="fc" id="L189">    }</span>
+
+    @Override
+    public boolean accept(AuditEvent event) {
+<span class="fc" id="L193">        boolean accepted = true;</span>
+
+<span class="fc bfc" id="L195" title="All 2 branches covered.">        if (event.getViolation() != null) {</span>
+<span class="fc" id="L196">            final String eventFileTextAbsolutePath = event.getFileName();</span>
+
+<span class="fc bfc" id="L198" title="All 2 branches covered.">            if (!cachedFileAbsolutePath.equals(eventFileTextAbsolutePath)) {</span>
+<span class="fc" id="L199">                final FileText currentFileText = getFileText(eventFileTextAbsolutePath);</span>
+
+<span class="fc bfc" id="L201" title="All 2 branches covered.">                if (currentFileText != null) {</span>
+<span class="fc" id="L202">                    cachedFileAbsolutePath = currentFileText.getFile().getAbsolutePath();</span>
+<span class="fc" id="L203">                    collectSuppressions(currentFileText);</span>
+                }
+            }
+
+<span class="fc" id="L207">            final Optional&lt;Suppression&gt; nearestSuppression =</span>
+<span class="fc" id="L208">                    getNearestSuppression(suppressions, event);</span>
+<span class="fc" id="L209">            accepted = nearestSuppression.isEmpty();</span>
+        }
+<span class="fc" id="L211">        return accepted;</span>
+    }
+
+    @Override
+    protected void finishLocalSetup() {
+        // No code by default
+<span class="fc" id="L217">    }</span>
+
+    /**
+     * Returns {@link FileText} instance created based on the given file name.
+     *
+     * @param fileName the name of the file.
+     * @return {@link FileText} instance.
+     * @throws IllegalStateException if the file could not be read.
+     */
+    private static FileText getFileText(String fileName) {
+<span class="fc" id="L227">        final File file = new File(fileName);</span>
+<span class="fc" id="L228">        FileText result = null;</span>
+
+        // some violations can be on a directory, instead of a file
+<span class="fc bfc" id="L231" title="All 2 branches covered.">        if (!file.isDirectory()) {</span>
+            try {
+<span class="fc" id="L233">                result = new FileText(file, StandardCharsets.UTF_8.name());</span>
+            }
+<span class="fc" id="L235">            catch (IOException ex) {</span>
+<span class="fc" id="L236">                throw new IllegalStateException(&quot;Cannot read source file: &quot; + fileName, ex);</span>
+<span class="fc" id="L237">            }</span>
+        }
+
+<span class="fc" id="L240">        return result;</span>
+    }
+
+    /**
+     * Collets all {@link Suppression} instances retrieved from the given {@link FileText}.
+     *
+     * @param fileText {@link FileText} instance.
+     */
+    private void collectSuppressions(FileText fileText) {
+<span class="fc" id="L249">        suppressions.clear();</span>
+
+<span class="fc bfc" id="L251" title="All 2 branches covered.">        for (int lineNo = 0; lineNo &lt; fileText.size(); lineNo++) {</span>
+<span class="fc" id="L252">            final Suppression suppression = getSuppression(fileText, lineNo);</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">            if (suppression != null) {</span>
+<span class="fc" id="L254">                suppressions.add(suppression);</span>
+            }
+        }
+<span class="fc" id="L257">    }</span>
+
+    /**
+     * Tries to extract the suppression from the given line.
+     *
+     * @param fileText {@link FileText} instance.
+     * @param lineNo line number.
+     * @return {@link Suppression} instance.
+     */
+    private Suppression getSuppression(FileText fileText, int lineNo) {
+<span class="fc" id="L267">        final String line = fileText.get(lineNo);</span>
+<span class="fc" id="L268">        final Matcher nearbyTextMatcher = nearbyTextPattern.matcher(line);</span>
+
+<span class="fc" id="L270">        Suppression suppression = null;</span>
+<span class="fc bfc" id="L271" title="All 2 branches covered.">        if (nearbyTextMatcher.find()) {</span>
+<span class="fc" id="L272">            final String text = nearbyTextMatcher.group(0);</span>
+<span class="fc" id="L273">            suppression = new Suppression(text, lineNo + 1, this);</span>
+        }
+
+<span class="fc" id="L276">        return suppression;</span>
+    }
+
+    /**
+     * Finds the nearest {@link Suppression} instance which can suppress
+     * the given {@link AuditEvent}. The nearest suppression is the suppression which scope
+     * is before the line and column of the event.
+     *
+     * @param suppressions collection of {@link Suppression} instances.
+     * @param event {@link AuditEvent} instance.
+     * @return {@link Suppression} instance.
+     */
+    private static Optional&lt;Suppression&gt; getNearestSuppression(Collection&lt;Suppression&gt; suppressions,
+                                                               AuditEvent event) {
+<span class="fc" id="L290">        return suppressions</span>
+<span class="fc" id="L291">                .stream()</span>
+<span class="fc" id="L292">                .filter(suppression -&gt; suppression.isMatch(event))</span>
+<span class="fc" id="L293">                .findFirst();</span>
+    }
+
+    /** The class which represents the suppression. */
+    private static final class Suppression {
+
+        /** The first line where warnings may be suppressed. */
+        private final int firstLine;
+
+        /** The last line where warnings may be suppressed. */
+        private final int lastLine;
+
+        /** The regexp which is used to match the event source.*/
+        private final Pattern eventSourceRegexp;
+
+        /** The regexp which is used to match the event message.*/
+        private Pattern eventMessageRegexp;
+
+        /** The regexp which is used to match the event ID.*/
+        private Pattern eventIdRegexp;
+
+        /**
+         * Constructs new {@code Suppression} instance.
+         *
+         * @param text suppression text.
+         * @param lineNo suppression line number.
+         * @param filter the {@code SuppressWithNearbyTextFilter} with the context.
+         * @throws IllegalArgumentException if there is an error in the filter regex syntax.
+         */
+        private Suppression(
+                String text,
+                int lineNo,
+                SuppressWithNearbyTextFilter filter
+<span class="fc" id="L326">        ) {</span>
+<span class="fc" id="L327">            final Pattern nearbyTextPattern = filter.nearbyTextPattern;</span>
+<span class="fc" id="L328">            final String lineRange = filter.lineRange;</span>
+<span class="fc" id="L329">            String format = &quot;&quot;;</span>
+            try {
+<span class="fc" id="L331">                format = CommonUtil.fillTemplateWithStringsByRegexp(</span>
+                        filter.checkPattern, text, nearbyTextPattern);
+<span class="fc" id="L333">                eventSourceRegexp = Pattern.compile(format);</span>
+<span class="fc bfc" id="L334" title="All 2 branches covered.">                if (filter.messagePattern != null) {</span>
+<span class="fc" id="L335">                    format = CommonUtil.fillTemplateWithStringsByRegexp(</span>
+                            filter.messagePattern, text, nearbyTextPattern);
+<span class="fc" id="L337">                    eventMessageRegexp = Pattern.compile(format);</span>
+                }
+<span class="fc bfc" id="L339" title="All 2 branches covered.">                if (filter.idPattern != null) {</span>
+<span class="fc" id="L340">                    format = CommonUtil.fillTemplateWithStringsByRegexp(</span>
+                            filter.idPattern, text, nearbyTextPattern);
+<span class="fc" id="L342">                    eventIdRegexp = Pattern.compile(format);</span>
+                }
+<span class="fc" id="L344">                format = CommonUtil.fillTemplateWithStringsByRegexp(lineRange,</span>
+                                                                    text, nearbyTextPattern);
+
+<span class="fc" id="L347">                final int range = parseRange(format, lineRange, text);</span>
+
+<span class="fc" id="L349">                firstLine = Math.min(lineNo, lineNo + range);</span>
+<span class="fc" id="L350">                lastLine = Math.max(lineNo, lineNo + range);</span>
+            }
+<span class="fc" id="L352">            catch (final PatternSyntaxException ex) {</span>
+<span class="fc" id="L353">                throw new IllegalArgumentException(</span>
+                    &quot;unable to parse expanded comment &quot; + format, ex);
+<span class="fc" id="L355">            }</span>
+<span class="fc" id="L356">        }</span>
+
+        /**
+         * Gets range from suppress filter range format param.
+         *
+         * @param format range format to parse
+         * @param lineRange raw line range
+         * @param text text of the suppression
+         * @return parsed range
+         * @throws IllegalArgumentException when unable to parse int in format
+         */
+        private static int parseRange(String format, String lineRange, String text) {
+            try {
+<span class="fc" id="L369">                return Integer.parseInt(format);</span>
+            }
+<span class="fc" id="L371">            catch (final NumberFormatException ex) {</span>
+<span class="fc" id="L372">                throw new IllegalArgumentException(&quot;unable to parse line range from '&quot; + text</span>
+                        + &quot;' using &quot; + lineRange, ex);
+            }
+        }
+
+        /**
+         * Determines whether the source of an audit event
+         * matches the text of this suppression.
+         *
+         * @param event the {@code AuditEvent} to check.
+         * @return true if the source of event matches the text of this suppression.
+         */
+        private boolean isMatch(AuditEvent event) {
+<span class="fc bfc" id="L385" title="All 2 branches covered.">            return isInScopeOfSuppression(event)</span>
+<span class="fc bfc" id="L386" title="All 2 branches covered.">                    &amp;&amp; isCheckMatch(event)</span>
+<span class="fc bfc" id="L387" title="All 2 branches covered.">                    &amp;&amp; isIdMatch(event)</span>
+<span class="fc bfc" id="L388" title="All 2 branches covered.">                    &amp;&amp; isMessageMatch(event);</span>
+        }
+
+        /**
+         * Checks whether the {@link AuditEvent} is in the scope of the suppression.
+         *
+         * @param event {@link AuditEvent} instance.
+         * @return true if the {@link AuditEvent} is in the scope of the suppression.
+         */
+        private boolean isInScopeOfSuppression(AuditEvent event) {
+<span class="fc" id="L398">            final int eventLine = event.getLine();</span>
+<span class="fc bfc" id="L399" title="All 4 branches covered.">            return eventLine &gt;= firstLine &amp;&amp; eventLine &lt;= lastLine;</span>
+        }
+
+        /**
+         * Checks whether {@link AuditEvent} source name matches the check pattern.
+         *
+         * @param event {@link AuditEvent} instance.
+         * @return true if the {@link AuditEvent} source name matches the check pattern.
+         */
+        private boolean isCheckMatch(AuditEvent event) {
+<span class="fc" id="L409">            final Matcher checkMatcher = eventSourceRegexp.matcher(event.getSourceName());</span>
+<span class="fc" id="L410">            return checkMatcher.find();</span>
+        }
+
+        /**
+         * Checks whether the {@link AuditEvent} module ID matches the ID pattern.
+         *
+         * @param event {@link AuditEvent} instance.
+         * @return true if the {@link AuditEvent} module ID matches the ID pattern.
+         */
+        private boolean isIdMatch(AuditEvent event) {
+<span class="fc" id="L420">            boolean match = true;</span>
+<span class="fc bfc" id="L421" title="All 2 branches covered.">            if (eventIdRegexp != null) {</span>
+<span class="fc bfc" id="L422" title="All 2 branches covered.">                if (event.getModuleId() == null) {</span>
+<span class="fc" id="L423">                    match = false;</span>
+                }
+                else {
+<span class="fc" id="L426">                    final Matcher idMatcher = eventIdRegexp.matcher(event.getModuleId());</span>
+<span class="fc" id="L427">                    match = idMatcher.find();</span>
+                }
+            }
+<span class="fc" id="L430">            return match;</span>
+        }
+
+        /**
+         * Checks whether the {@link AuditEvent} message matches the message pattern.
+         *
+         * @param event {@link AuditEvent} instance.
+         * @return true if the {@link AuditEvent} message matches the message pattern.
+         */
+        private boolean isMessageMatch(AuditEvent event) {
+<span class="fc" id="L440">            boolean match = true;</span>
+<span class="fc bfc" id="L441" title="All 2 branches covered.">            if (eventMessageRegexp != null) {</span>
+<span class="fc" id="L442">                final Matcher messageMatcher = eventMessageRegexp.matcher(event.getMessage());</span>
+<span class="fc" id="L443">                match = messageMatcher.find();</span>
+            }
+<span class="fc" id="L445">            return match;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

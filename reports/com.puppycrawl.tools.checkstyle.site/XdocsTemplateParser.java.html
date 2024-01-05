@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>XdocsTemplateParser.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.site</a> &gt; <span class="el_source">XdocsTemplateParser.java</span></div><h1>XdocsTemplateParser.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.site;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.Reader;
+import java.io.StringReader;
+import java.io.StringWriter;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+
+import javax.swing.text.html.HTML.Attribute;
+
+import org.apache.maven.doxia.macro.MacroExecutionException;
+import org.apache.maven.doxia.macro.MacroRequest;
+import org.apache.maven.doxia.macro.manager.MacroNotFoundException;
+import org.apache.maven.doxia.module.xdoc.XdocParser;
+import org.apache.maven.doxia.parser.ParseException;
+import org.apache.maven.doxia.parser.Parser;
+import org.apache.maven.doxia.sink.Sink;
+import org.codehaus.plexus.component.annotations.Component;
+import org.codehaus.plexus.util.IOUtil;
+import org.codehaus.plexus.util.xml.pull.XmlPullParser;
+
+/**
+ * Parser for Checkstyle's xdoc templates.
+ * This parser is responsible for generating xdocs({@code .xml}) from the xdoc
+ * templates({@code .xml.template}). The templates are regular xdocs with custom
+ * macros for generating dynamic content - properties, examples, etc.
+ * This parser behaves just like the {@link XdocParser} with the difference that all
+ * elements apart from the {@code macro} element are copied as is to the output.
+ * This module will be removed once
+ * &lt;a href=&quot;https://github.com/checkstyle/checkstyle/issues/13426&quot;&gt;#13426&lt;/a&gt; is resolved.
+ *
+ * @see ExampleMacro
+ */
+@Component(role = Parser.class, hint = &quot;xdocs-template&quot;)
+<span class="fc" id="L57">public class XdocsTemplateParser extends XdocParser {</span>
+
+    /** User working directory. */
+<span class="fc" id="L60">    public static final String TEMP_DIR = System.getProperty(&quot;java.io.tmpdir&quot;);</span>
+
+    /** The macro parameters. */
+<span class="fc" id="L63">    private final Map&lt;String, Object&gt; macroParameters = new HashMap&lt;&gt;();</span>
+
+    /** The source content of the input reader. Used to pass into macros. */
+    private String sourceContent;
+
+    /** A macro name. */
+    private String macroName;
+
+    @Override
+    public void parse(Reader source, Sink sink, String reference) throws ParseException {
+<span class="fc" id="L73">        try (StringWriter contentWriter = new StringWriter()) {</span>
+<span class="fc" id="L74">            IOUtil.copy(source, contentWriter);</span>
+<span class="fc" id="L75">            sourceContent = contentWriter.toString();</span>
+<span class="fc" id="L76">            super.parse(new StringReader(sourceContent), sink, reference);</span>
+        }
+<span class="nc" id="L78">        catch (IOException ioException) {</span>
+<span class="nc" id="L79">            throw new ParseException(&quot;Error reading the input source&quot;, ioException);</span>
+        }
+        finally {
+<span class="fc" id="L82">            sourceContent = null;</span>
+        }
+<span class="fc" id="L84">    }</span>
+
+    @Override
+    protected void handleStartTag(XmlPullParser parser, Sink sink) throws MacroExecutionException {
+<span class="fc" id="L88">        final String tagName = parser.getName();</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (tagName.equals(DOCUMENT_TAG.toString())) {</span>
+<span class="fc" id="L90">            sink.body();</span>
+<span class="fc" id="L91">            sink.rawText(parser.getText());</span>
+        }
+<span class="pc bpc" id="L93" title="1 of 4 branches missed.">        else if (tagName.equals(MACRO_TAG.toString()) &amp;&amp; !isSecondParsing()) {</span>
+<span class="fc" id="L94">            processMacroStart(parser);</span>
+<span class="fc" id="L95">            setIgnorableWhitespace(true);</span>
+        }
+<span class="pc bpc" id="L97" title="1 of 4 branches missed.">        else if (tagName.equals(PARAM.toString()) &amp;&amp; !isSecondParsing()) {</span>
+<span class="fc" id="L98">            processParamStart(parser, sink);</span>
+        }
+        else {
+<span class="fc" id="L101">            sink.rawText(parser.getText());</span>
+        }
+<span class="fc" id="L103">    }</span>
+
+    @Override
+    protected void handleEndTag(XmlPullParser parser, Sink sink) throws MacroExecutionException {
+<span class="fc" id="L107">        final String tagName = parser.getName();</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        if (tagName.equals(DOCUMENT_TAG.toString())) {</span>
+<span class="fc" id="L109">            sink.rawText(parser.getText());</span>
+<span class="fc" id="L110">            sink.body_();</span>
+        }
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        else if (macroName != null</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                &amp;&amp; tagName.equals(MACRO_TAG.toString())</span>
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">                &amp;&amp; !macroName.isEmpty()</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">                &amp;&amp; !isSecondParsing()) {</span>
+<span class="fc" id="L116">            processMacroEnd(sink);</span>
+<span class="fc" id="L117">            setIgnorableWhitespace(false);</span>
+        }
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        else if (!tagName.equals(PARAM.toString())) {</span>
+<span class="fc" id="L120">            sink.rawText(parser.getText());</span>
+        }
+<span class="fc" id="L122">    }</span>
+
+    /**
+     * Handle the opening tag of a macro. Gather the macro name and parameters.
+     *
+     * @param parser the xml parser.
+     * @throws MacroExecutionException if the macro name is not specified.
+     */
+    private void processMacroStart(XmlPullParser parser) throws MacroExecutionException {
+<span class="fc" id="L131">        macroName = parser.getAttributeValue(null, Attribute.NAME.toString());</span>
+
+<span class="pc bpc" id="L133" title="2 of 4 branches missed.">        if (macroName == null || macroName.isEmpty()) {</span>
+<span class="nc" id="L134">            final String message = String.format(Locale.ROOT,</span>
+                    &quot;The '%s' attribute for the '%s' tag is required.&quot;,
+                    Attribute.NAME, MACRO_TAG);
+<span class="nc" id="L137">            throw new MacroExecutionException(message);</span>
+        }
+<span class="fc" id="L139">    }</span>
+
+    /**
+     * Handle the opening tag of a parameter. Gather the parameter name and value.
+     *
+     * @param parser the xml parser.
+     * @param sink the sink object.
+     * @throws MacroExecutionException if the parameter name or value is not specified.
+     */
+    private void processParamStart(XmlPullParser parser, Sink sink) throws MacroExecutionException {
+<span class="pc bpc" id="L149" title="2 of 4 branches missed.">        if (macroName != null &amp;&amp; !macroName.isEmpty()) {</span>
+<span class="fc" id="L150">            final String paramName = parser</span>
+<span class="fc" id="L151">                    .getAttributeValue(null, Attribute.NAME.toString());</span>
+<span class="fc" id="L152">            final String paramValue = parser</span>
+<span class="fc" id="L153">                    .getAttributeValue(null, Attribute.VALUE.toString());</span>
+
+<span class="pc bpc" id="L155" title="2 of 4 branches missed.">            if (paramName == null</span>
+                    || paramValue == null
+<span class="pc bpc" id="L157" title="1 of 2 branches missed.">                    || paramName.isEmpty()</span>
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">                    || paramValue.isEmpty()) {</span>
+<span class="nc" id="L159">                final String message = String.format(Locale.ROOT,</span>
+                        &quot;'%s' and '%s' attributes for the '%s' tag are required&quot;
+                                + &quot; inside the '%s' tag.&quot;,
+                        Attribute.NAME, Attribute.VALUE, PARAM, MACRO_TAG);
+<span class="nc" id="L163">                throw new MacroExecutionException(message);</span>
+            }
+
+<span class="fc" id="L166">            macroParameters.put(paramName, paramValue);</span>
+<span class="fc" id="L167">        }</span>
+        else {
+<span class="nc" id="L169">            sink.rawText(parser.getText());</span>
+        }
+<span class="fc" id="L171">    }</span>
+
+    /**
+     * Execute a macro. Creates a {@link MacroRequest} with the gathered
+     * {@link #macroName} and {@link #macroParameters} and executes the macro.
+     * Afterward, the macro fields are reinitialized.
+     *
+     * @param sink the sink object.
+     * @throws MacroExecutionException if a macro is not found.
+     */
+    private void processMacroEnd(Sink sink) throws MacroExecutionException {
+<span class="fc" id="L182">        final MacroRequest request = new MacroRequest(sourceContent,</span>
+                new XdocsTemplateParser(), macroParameters,
+                new File(TEMP_DIR));
+
+        try {
+<span class="fc" id="L187">            executeMacro(macroName, request, sink);</span>
+        }
+<span class="nc" id="L189">        catch (MacroNotFoundException exception) {</span>
+<span class="nc" id="L190">            final String message = String.format(Locale.ROOT, &quot;Macro '%s' not found.&quot;, macroName);</span>
+<span class="nc" id="L191">            throw new MacroExecutionException(message, exception);</span>
+<span class="fc" id="L192">        }</span>
+
+<span class="fc" id="L194">        reinitializeMacroFields();</span>
+<span class="fc" id="L195">    }</span>
+
+    /**
+     * Reinitialize the macro fields.
+     */
+    private void reinitializeMacroFields() {
+<span class="fc" id="L201">        macroName = &quot;&quot;;</span>
+<span class="fc" id="L202">        macroParameters.clear();</span>
+<span class="fc" id="L203">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LambdaBodyLengthCheck.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.checks.sizes</a> &gt; <span class="el_source">LambdaBodyLengthCheck.java</span></div><h1>LambdaBodyLengthCheck.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.checks.sizes;
+
+import com.puppycrawl.tools.checkstyle.StatelessCheck;
+import com.puppycrawl.tools.checkstyle.api.AbstractCheck;
+import com.puppycrawl.tools.checkstyle.api.DetailAST;
+import com.puppycrawl.tools.checkstyle.api.TokenTypes;
+
+/**
+ * &lt;p&gt;
+ * Checks lambda body length.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Rationale: Similar to anonymous inner classes, if lambda body becomes very long
+ * it is hard to understand and to see the flow of the method
+ * where the lambda is defined. Therefore, long lambda body
+ * should usually be extracted to method.
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * Property {@code max} - Specify the maximum number of lines allowed.
+ * Type is {@code int}.
+ * Default value is {@code 10}.
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Parent is {@code com.puppycrawl.tools.checkstyle.TreeWalker}
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Violation Message Keys:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * {@code maxLen.lambdaBody}
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * @since 8.37
+ */
+@StatelessCheck
+<span class="fc" id="L59">public class LambdaBodyLengthCheck extends AbstractCheck {</span>
+
+    /**
+     * A key is pointing to the warning message text in &quot;messages.properties&quot;
+     * file.
+     */
+    public static final String MSG_KEY = &quot;maxLen.lambdaBody&quot;;
+
+    /** Default maximum number of lines. */
+    private static final int DEFAULT_MAX = 10;
+
+    /** Specify the maximum number of lines allowed. */
+<span class="fc" id="L71">    private int max = DEFAULT_MAX;</span>
+
+    /**
+     * Setter to specify the maximum number of lines allowed.
+     *
+     * @param length the maximum length of lambda body.
+     * @since 8.37
+     */
+    public void setMax(int length) {
+<span class="fc" id="L80">        max = length;</span>
+<span class="fc" id="L81">    }</span>
+
+    @Override
+    public int[] getDefaultTokens() {
+<span class="fc" id="L85">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+<span class="fc" id="L90">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getRequiredTokens() {
+<span class="fc" id="L95">        return new int[] {TokenTypes.LAMBDA};</span>
+    }
+
+    @Override
+    public void visitToken(DetailAST ast) {
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (ast.getParent().getType() != TokenTypes.SWITCH_RULE) {</span>
+<span class="fc" id="L101">            final int length = getLength(ast);</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">            if (length &gt; max) {</span>
+<span class="fc" id="L103">                log(ast, MSG_KEY, length, max);</span>
+            }
+        }
+<span class="fc" id="L106">    }</span>
+
+    /**
+     * Get length of lambda body.
+     *
+     * @param ast lambda body node.
+     * @return length of lambda body.
+     */
+    private static int getLength(DetailAST ast) {
+<span class="fc" id="L115">        final DetailAST lambdaBody = ast.getLastChild();</span>
+        final int length;
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (lambdaBody.getType() == TokenTypes.SLIST) {</span>
+<span class="fc" id="L118">            length = lambdaBody.getLastChild().getLineNo() - lambdaBody.getLineNo();</span>
+        }
+        else {
+<span class="fc" id="L121">            length = getLastNodeLineNumber(lambdaBody) - getFirstNodeLineNumber(lambdaBody);</span>
+        }
+<span class="fc" id="L123">        return length + 1;</span>
+    }
+
+    /**
+     * Get last child node in the tree line number.
+     *
+     * @param lambdaBody lambda body node.
+     * @return last child node in the tree line number.
+     */
+    private static int getLastNodeLineNumber(DetailAST lambdaBody) {
+<span class="fc" id="L133">        DetailAST node = lambdaBody;</span>
+        int result;
+        do {
+<span class="fc" id="L136">            result = node.getLineNo();</span>
+<span class="fc" id="L137">            node = node.getLastChild();</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        } while (node != null);</span>
+<span class="fc" id="L139">        return result;</span>
+    }
+
+    /**
+     * Get first child node in the tree line number.
+     *
+     * @param lambdaBody lambda body node.
+     * @return first child node in the tree line number.
+     */
+    private static int getFirstNodeLineNumber(DetailAST lambdaBody) {
+<span class="fc" id="L149">        DetailAST node = lambdaBody;</span>
+        int result;
+        do {
+<span class="fc" id="L152">            result = node.getLineNo();</span>
+<span class="fc" id="L153">            node = node.getFirstChild();</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        } while (node != null);</span>
+<span class="fc" id="L155">        return result;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

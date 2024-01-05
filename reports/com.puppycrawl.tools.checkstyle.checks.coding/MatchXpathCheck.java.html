@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MatchXpathCheck.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.checks.coding</a> &gt; <span class="el_source">MatchXpathCheck.java</span></div><h1>MatchXpathCheck.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.checks.coding;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+import com.puppycrawl.tools.checkstyle.StatelessCheck;
+import com.puppycrawl.tools.checkstyle.api.AbstractCheck;
+import com.puppycrawl.tools.checkstyle.api.DetailAST;
+import com.puppycrawl.tools.checkstyle.utils.CommonUtil;
+import com.puppycrawl.tools.checkstyle.xpath.AbstractNode;
+import com.puppycrawl.tools.checkstyle.xpath.RootNode;
+import net.sf.saxon.Configuration;
+import net.sf.saxon.om.Item;
+import net.sf.saxon.sxpath.XPathDynamicContext;
+import net.sf.saxon.sxpath.XPathEvaluator;
+import net.sf.saxon.sxpath.XPathExpression;
+import net.sf.saxon.trans.XPathException;
+
+/**
+ * &lt;p&gt;
+ * Evaluates Xpath query and report violation on all matching AST nodes. This check allows
+ * user to implement custom checks using Xpath. If Xpath query is not specified explicitly,
+ * then the check does nothing.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * It is recommended to define custom message for violation to explain what is not allowed and what
+ * to use instead, default message might be too abstract. To customize a message you need to
+ * add {@code message} element with &lt;b&gt;matchxpath.match&lt;/b&gt; as {@code key} attribute and
+ * desired message as {@code value} attribute.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Please read more about Xpath syntax at
+ * &lt;a href=&quot;https://www.saxonica.com/html/documentation10/expressions/index.html&quot;&gt;Xpath Syntax&lt;/a&gt;.
+ * Information regarding Xpath functions can be found at
+ * &lt;a href=&quot;https://www.saxonica.com/html/documentation10/functions/fn/index.html&quot;&gt;
+ *     XSLT/XPath Reference&lt;/a&gt;.
+ * Note, that &lt;b&gt;@text&lt;/b&gt; attribute can be used only with token types that are listed in
+ * &lt;a href=&quot;https://github.com/checkstyle/checkstyle/search?q=%22TOKEN_TYPES_WITH_TEXT_ATTRIBUTE+%3D+Arrays.asList%22&quot;&gt;
+ *     XpathUtil&lt;/a&gt;.
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * Property {@code query} - Specify Xpath query.
+ * Type is {@code java.lang.String}.
+ * Default value is {@code &quot;&quot;}.
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Parent is {@code com.puppycrawl.tools.checkstyle.TreeWalker}
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Violation Message Keys:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * {@code matchxpath.match}
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * @since 8.39
+ */
+@StatelessCheck
+<span class="fc" id="L82">public class MatchXpathCheck extends AbstractCheck {</span>
+
+    /**
+     * A key is pointing to the warning message text provided by user.
+     */
+    public static final String MSG_KEY = &quot;matchxpath.match&quot;;
+
+    /** Specify Xpath query. */
+<span class="fc" id="L90">    private String query = &quot;&quot;;</span>
+
+    /** Xpath expression. */
+    private XPathExpression xpathExpression;
+
+    /**
+     * Setter to specify Xpath query.
+     *
+     * @param query Xpath query.
+     * @throws IllegalStateException if creation of xpath expression fails
+     * @since 8.39
+     */
+    public void setQuery(String query) {
+<span class="fc" id="L103">        this.query = query;</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (!query.isEmpty()) {</span>
+            try {
+<span class="fc" id="L106">                final XPathEvaluator xpathEvaluator =</span>
+<span class="fc" id="L107">                        new XPathEvaluator(Configuration.newConfiguration());</span>
+<span class="fc" id="L108">                xpathExpression = xpathEvaluator.createExpression(query);</span>
+            }
+<span class="fc" id="L110">            catch (XPathException ex) {</span>
+<span class="fc" id="L111">                throw new IllegalStateException(&quot;Creating Xpath expression failed: &quot; + query, ex);</span>
+<span class="fc" id="L112">            }</span>
+        }
+<span class="fc" id="L114">    }</span>
+
+    @Override
+    public int[] getDefaultTokens() {
+<span class="fc" id="L118">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+<span class="fc" id="L123">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getRequiredTokens() {
+<span class="fc" id="L128">        return CommonUtil.EMPTY_INT_ARRAY;</span>
+    }
+
+    @Override
+    public boolean isCommentNodesRequired() {
+<span class="fc" id="L133">        return true;</span>
+    }
+
+    @Override
+    public void beginTree(DetailAST rootAST) {
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        if (!query.isEmpty()) {</span>
+<span class="fc" id="L139">            final List&lt;DetailAST&gt; matchingNodes = findMatchingNodesByXpathQuery(rootAST);</span>
+<span class="fc" id="L140">            matchingNodes.forEach(node -&gt; log(node, MSG_KEY));</span>
+        }
+<span class="fc" id="L142">    }</span>
+
+    /**
+     * Find nodes that match query.
+     *
+     * @param rootAST root node
+     * @return list of matching nodes
+     * @throws IllegalStateException if evaluation of xpath query fails
+     */
+    private List&lt;DetailAST&gt; findMatchingNodesByXpathQuery(DetailAST rootAST) {
+        try {
+<span class="fc" id="L153">            final RootNode rootNode = new RootNode(rootAST);</span>
+<span class="fc" id="L154">            final XPathDynamicContext xpathDynamicContext =</span>
+<span class="fc" id="L155">                    xpathExpression.createDynamicContext(rootNode);</span>
+<span class="fc" id="L156">            final List&lt;Item&gt; matchingItems = xpathExpression.evaluate(xpathDynamicContext);</span>
+<span class="fc" id="L157">            return matchingItems.stream()</span>
+<span class="fc" id="L158">                    .map(item -&gt; (DetailAST) ((AbstractNode) item).getUnderlyingNode())</span>
+<span class="fc" id="L159">                    .collect(Collectors.toList());</span>
+        }
+<span class="fc" id="L161">        catch (XPathException ex) {</span>
+<span class="fc" id="L162">            throw new IllegalStateException(&quot;Evaluation of Xpath query failed: &quot; + query, ex);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

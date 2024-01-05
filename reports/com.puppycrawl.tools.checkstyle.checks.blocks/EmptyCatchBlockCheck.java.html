@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EmptyCatchBlockCheck.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.checks.blocks</a> &gt; <span class="el_source">EmptyCatchBlockCheck.java</span></div><h1>EmptyCatchBlockCheck.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.checks.blocks;
+
+import java.util.regex.Pattern;
+
+import com.puppycrawl.tools.checkstyle.StatelessCheck;
+import com.puppycrawl.tools.checkstyle.api.AbstractCheck;
+import com.puppycrawl.tools.checkstyle.api.DetailAST;
+import com.puppycrawl.tools.checkstyle.api.TokenTypes;
+
+/**
+ * &lt;p&gt;
+ * Checks for empty catch blocks.
+ * By default, check allows empty catch block with any comment inside.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * There are two options to make validation more precise: &lt;b&gt;exceptionVariableName&lt;/b&gt; and
+ * &lt;b&gt;commentFormat&lt;/b&gt;.
+ * If both options are specified - they are applied by &lt;b&gt;any of them is matching&lt;/b&gt;.
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * Property {@code commentFormat} - Specify the RegExp for the first comment inside empty
+ * catch block. If check meets comment inside empty catch block matching specified format
+ * - empty block is suppressed. If it is multi-line comment - only its first line is analyzed.
+ * Type is {@code java.util.regex.Pattern}.
+ * Default value is {@code &quot;.*&quot;}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code exceptionVariableName} - Specify the RegExp for the name of the variable
+ * associated with exception. If check meets variable name matching specified value - empty
+ * block is suppressed.
+ * Type is {@code java.util.regex.Pattern}.
+ * Default value is {@code &quot;^$&quot;}.
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Parent is {@code com.puppycrawl.tools.checkstyle.TreeWalker}
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Violation Message Keys:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * {@code catch.block.empty}
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * @since 6.4
+ */
+@StatelessCheck
+<span class="fc" id="L70">public class EmptyCatchBlockCheck extends AbstractCheck {</span>
+
+    /**
+     * A key is pointing to the warning message text in &quot;messages.properties&quot;
+     * file.
+     */
+    public static final String MSG_KEY_CATCH_BLOCK_EMPTY = &quot;catch.block.empty&quot;;
+
+    /**
+     * A pattern to split on line ends.
+     */
+<span class="fc" id="L81">    private static final Pattern LINE_END_PATTERN = Pattern.compile(&quot;\\r?+\\n|\\r&quot;);</span>
+
+    /**
+     * Specify the RegExp for the name of the variable associated with exception.
+     * If check meets variable name matching specified value - empty block is suppressed.
+     */
+<span class="fc" id="L87">    private Pattern exceptionVariableName = Pattern.compile(&quot;^$&quot;);</span>
+
+    /**
+     * Specify the RegExp for the first comment inside empty catch block.
+     * If check meets comment inside empty catch block matching specified format - empty
+     * block is suppressed. If it is multi-line comment - only its first line is analyzed.
+     */
+<span class="fc" id="L94">    private Pattern commentFormat = Pattern.compile(&quot;.*&quot;);</span>
+
+    /**
+     * Setter to specify the RegExp for the name of the variable associated with exception.
+     * If check meets variable name matching specified value - empty block is suppressed.
+     *
+     * @param exceptionVariablePattern
+     *        pattern of exception's variable name.
+     * @since 6.4
+     */
+    public void setExceptionVariableName(Pattern exceptionVariablePattern) {
+<span class="fc" id="L105">        exceptionVariableName = exceptionVariablePattern;</span>
+<span class="fc" id="L106">    }</span>
+
+    /**
+     * Setter to specify the RegExp for the first comment inside empty catch block.
+     * If check meets comment inside empty catch block matching specified format - empty
+     * block is suppressed. If it is multi-line comment - only its first line is analyzed.
+     *
+     * @param commentPattern
+     *        pattern of comment.
+     * @since 6.4
+     */
+    public void setCommentFormat(Pattern commentPattern) {
+<span class="fc" id="L118">        commentFormat = commentPattern;</span>
+<span class="fc" id="L119">    }</span>
+
+    @Override
+    public int[] getDefaultTokens() {
+<span class="fc" id="L123">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+<span class="fc" id="L128">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getRequiredTokens() {
+<span class="fc" id="L133">        return new int[] {</span>
+            TokenTypes.LITERAL_CATCH,
+        };
+    }
+
+    @Override
+    public boolean isCommentNodesRequired() {
+<span class="fc" id="L140">        return true;</span>
+    }
+
+    @Override
+    public void visitToken(DetailAST ast) {
+<span class="fc" id="L145">        visitCatchBlock(ast);</span>
+<span class="fc" id="L146">    }</span>
+
+    /**
+     * Visits catch ast node, if it is empty catch block - checks it according to
+     *  Check's options. If exception's variable name or comment inside block are matching
+     *   specified regexp - skips from consideration, else - puts violation.
+     *
+     * @param catchAst {@link TokenTypes#LITERAL_CATCH LITERAL_CATCH}
+     */
+    private void visitCatchBlock(DetailAST catchAst) {
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        if (isEmptyCatchBlock(catchAst)) {</span>
+<span class="fc" id="L157">            final String commentContent = getCommentFirstLine(catchAst);</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">            if (isVerifiable(catchAst, commentContent)) {</span>
+<span class="fc" id="L159">                log(catchAst.findFirstToken(TokenTypes.SLIST), MSG_KEY_CATCH_BLOCK_EMPTY);</span>
+            }
+        }
+<span class="fc" id="L162">    }</span>
+
+    /**
+     * Gets the first line of comment in catch block. If comment is single-line -
+     *  returns it fully, else if comment is multi-line - returns the first line.
+     *
+     * @param catchAst {@link TokenTypes#LITERAL_CATCH LITERAL_CATCH}
+     * @return the first line of comment in catch block, &quot;&quot; if no comment was found.
+     */
+    private static String getCommentFirstLine(DetailAST catchAst) {
+<span class="fc" id="L172">        final DetailAST slistToken = catchAst.getLastChild();</span>
+<span class="fc" id="L173">        final DetailAST firstElementInBlock = slistToken.getFirstChild();</span>
+<span class="fc" id="L174">        String commentContent = &quot;&quot;;</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        if (firstElementInBlock.getType() == TokenTypes.SINGLE_LINE_COMMENT) {</span>
+<span class="fc" id="L176">            commentContent = firstElementInBlock.getFirstChild().getText();</span>
+        }
+<span class="fc bfc" id="L178" title="All 2 branches covered.">        else if (firstElementInBlock.getType() == TokenTypes.BLOCK_COMMENT_BEGIN) {</span>
+<span class="fc" id="L179">            commentContent = firstElementInBlock.getFirstChild().getText();</span>
+<span class="fc" id="L180">            final String[] lines = LINE_END_PATTERN.split(commentContent);</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">            for (String line : lines) {</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">                if (!line.isEmpty()) {</span>
+<span class="fc" id="L183">                    commentContent = line;</span>
+<span class="fc" id="L184">                    break;</span>
+                }
+            }
+        }
+<span class="fc" id="L188">        return commentContent;</span>
+    }
+
+    /**
+     * Checks if current empty catch block is verifiable according to Check's options
+     *  (exception's variable name and comment format are both in consideration).
+     *
+     * @param emptyCatchAst empty catch {@link TokenTypes#LITERAL_CATCH LITERAL_CATCH} block.
+     * @param commentContent text of comment.
+     * @return true if empty catch block is verifiable by Check.
+     */
+    private boolean isVerifiable(DetailAST emptyCatchAst, String commentContent) {
+<span class="fc" id="L200">        final String variableName = getExceptionVariableName(emptyCatchAst);</span>
+<span class="fc" id="L201">        final boolean isMatchingVariableName = exceptionVariableName</span>
+<span class="fc" id="L202">                .matcher(variableName).find();</span>
+<span class="fc bfc" id="L203" title="All 2 branches covered.">        final boolean isMatchingCommentContent = !commentContent.isEmpty()</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">                 &amp;&amp; commentFormat.matcher(commentContent).find();</span>
+<span class="fc bfc" id="L205" title="All 4 branches covered.">        return !isMatchingVariableName &amp;&amp; !isMatchingCommentContent;</span>
+    }
+
+    /**
+     * Checks if catch block is empty or contains only comments.
+     *
+     * @param catchAst {@link TokenTypes#LITERAL_CATCH LITERAL_CATCH}
+     * @return true if catch block is empty.
+     */
+    private static boolean isEmptyCatchBlock(DetailAST catchAst) {
+<span class="fc" id="L215">        boolean result = true;</span>
+<span class="fc" id="L216">        final DetailAST slistToken = catchAst.findFirstToken(TokenTypes.SLIST);</span>
+<span class="fc" id="L217">        DetailAST catchBlockStmt = slistToken.getFirstChild();</span>
+<span class="fc bfc" id="L218" title="All 2 branches covered.">        while (catchBlockStmt.getType() != TokenTypes.RCURLY) {</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">            if (catchBlockStmt.getType() != TokenTypes.SINGLE_LINE_COMMENT</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">                 &amp;&amp; catchBlockStmt.getType() != TokenTypes.BLOCK_COMMENT_BEGIN) {</span>
+<span class="fc" id="L221">                result = false;</span>
+<span class="fc" id="L222">                break;</span>
+            }
+<span class="fc" id="L224">            catchBlockStmt = catchBlockStmt.getNextSibling();</span>
+        }
+<span class="fc" id="L226">        return result;</span>
+    }
+
+    /**
+     * Gets variable's name associated with exception.
+     *
+     * @param catchAst {@link TokenTypes#LITERAL_CATCH LITERAL_CATCH}
+     * @return Variable's name associated with exception.
+     */
+    private static String getExceptionVariableName(DetailAST catchAst) {
+<span class="fc" id="L236">        final DetailAST parameterDef = catchAst.findFirstToken(TokenTypes.PARAMETER_DEF);</span>
+<span class="fc" id="L237">        final DetailAST variableName = parameterDef.findFirstToken(TokenTypes.IDENT);</span>
+<span class="fc" id="L238">        return variableName.getText();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

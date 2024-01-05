@@ -1,0 +1,351 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractElementNode.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.xpath</a> &gt; <span class="el_source">AbstractElementNode.java</span></div><h1>AbstractElementNode.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.xpath;
+
+import java.util.List;
+import java.util.Optional;
+
+import com.puppycrawl.tools.checkstyle.utils.UnmodifiableCollectionUtil;
+import com.puppycrawl.tools.checkstyle.xpath.iterators.DescendantIterator;
+import com.puppycrawl.tools.checkstyle.xpath.iterators.FollowingIterator;
+import com.puppycrawl.tools.checkstyle.xpath.iterators.PrecedingIterator;
+import com.puppycrawl.tools.checkstyle.xpath.iterators.ReverseListIterator;
+import net.sf.saxon.om.AxisInfo;
+import net.sf.saxon.om.NamespaceUri;
+import net.sf.saxon.om.NodeInfo;
+import net.sf.saxon.tree.iter.ArrayIterator;
+import net.sf.saxon.tree.iter.AxisIterator;
+import net.sf.saxon.tree.iter.EmptyIterator;
+import net.sf.saxon.tree.iter.SingleNodeIterator;
+import net.sf.saxon.tree.util.Navigator;
+import net.sf.saxon.type.Type;
+
+/**
+ * Represents element node of Xpath-tree.
+ */
+public abstract class AbstractElementNode extends AbstractNode {
+
+    /** String literal for text attribute. */
+    protected static final String TEXT_ATTRIBUTE_NAME = &quot;text&quot;;
+
+    /** Constant for optimization. */
+<span class="fc" id="L49">    private static final AbstractNode[] EMPTY_ABSTRACT_NODE_ARRAY = new AbstractNode[0];</span>
+
+    /** Holder value for lazy creation of attribute node. */
+<span class="fc" id="L52">    private static final AttributeNode ATTRIBUTE_NODE_UNINITIALIZED = new AttributeNode(null, null);</span>
+
+    /** The root node. */
+    private final AbstractNode root;
+
+    /** The parent of the current node. */
+    private final AbstractNode parent;
+
+    /** Depth of the node. */
+    private final int depth;
+
+    /** Represents index among siblings. */
+    private final int indexAmongSiblings;
+
+    /** The text attribute node. */
+<span class="fc" id="L67">    private AttributeNode attributeNode = ATTRIBUTE_NODE_UNINITIALIZED;</span>
+
+    /**
+     * Creates a new {@code AbstractElementNode} instance.
+     *
+     * @param root {@code Node} root of the tree
+     * @param parent {@code Node} parent of the current node
+     * @param depth the current node depth in the hierarchy
+     * @param indexAmongSiblings the current node index among the parent children nodes
+     */
+    protected AbstractElementNode(AbstractNode root, AbstractNode parent,
+            int depth, int indexAmongSiblings) {
+<span class="fc" id="L79">        super(root.getTreeInfo());</span>
+<span class="fc" id="L80">        this.parent = parent;</span>
+<span class="fc" id="L81">        this.root = root;</span>
+<span class="fc" id="L82">        this.depth = depth;</span>
+<span class="fc" id="L83">        this.indexAmongSiblings = indexAmongSiblings;</span>
+<span class="fc" id="L84">    }</span>
+
+    /**
+     * Creates {@code AttributeNode} object and returns it.
+     *
+     * @return attribute node if possible, otherwise the {@code null} value
+     */
+    protected abstract AttributeNode createAttributeNode();
+
+    /**
+     * Compares current object with specified for order.
+     *
+     * @param other another {@code NodeInfo} object
+     * @return number representing order of current object to specified one
+     */
+    @Override
+    public int compareOrder(NodeInfo other) {
+<span class="fc" id="L101">        int result = 0;</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        if (other instanceof AbstractNode) {</span>
+<span class="fc" id="L103">            result = Integer.compare(depth, ((AbstractNode) other).getDepth());</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">            if (result == 0) {</span>
+<span class="fc" id="L105">                result = compareCommonAncestorChildrenOrder(this, other);</span>
+            }
+        }
+<span class="fc" id="L108">        return result;</span>
+    }
+
+    /**
+     * Walks up the hierarchy until a common ancestor is found.
+     * Then compares topmost sibling nodes.
+     *
+     * @param first {@code NodeInfo} to compare
+     * @param second {@code NodeInfo} to compare
+     * @return the value {@code 0} if {@code first == second};
+     *         a value less than {@code 0} if {@code first} should be first;
+     *         a value greater than {@code 0} if {@code second} should be first.
+     */
+    private static int compareCommonAncestorChildrenOrder(NodeInfo first, NodeInfo second) {
+<span class="fc" id="L122">        NodeInfo child1 = first;</span>
+<span class="fc" id="L123">        NodeInfo child2 = second;</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        while (!child1.getParent().equals(child2.getParent())) {</span>
+<span class="fc" id="L125">            child1 = child1.getParent();</span>
+<span class="fc" id="L126">            child2 = child2.getParent();</span>
+        }
+<span class="fc" id="L128">        final int index1 = ((AbstractElementNode) child1).indexAmongSiblings;</span>
+<span class="fc" id="L129">        final int index2 = ((AbstractElementNode) child2).indexAmongSiblings;</span>
+<span class="fc" id="L130">        return Integer.compare(index1, index2);</span>
+    }
+
+    /**
+     * Getter method for node depth.
+     *
+     * @return depth
+     */
+    @Override
+    public int getDepth() {
+<span class="fc" id="L140">        return depth;</span>
+    }
+
+    /**
+     * Returns attribute value.
+     *
+     * @param namespace namespace
+     * @param localPart actual name of the attribute
+     * @return attribute value or null if the attribute was not found
+     */
+    @Override
+    public String getAttributeValue(NamespaceUri namespace, String localPart) {
+        final String result;
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        if (TEXT_ATTRIBUTE_NAME.equals(localPart)) {</span>
+<span class="fc" id="L154">            result = Optional.ofNullable(getAttributeNode())</span>
+<span class="fc" id="L155">                .map(AttributeNode::getStringValue)</span>
+<span class="fc" id="L156">                .orElse(null);</span>
+        }
+        else {
+<span class="fc" id="L159">            result = null;</span>
+        }
+<span class="fc" id="L161">        return result;</span>
+    }
+
+    /**
+     * Returns type of the node.
+     *
+     * @return node kind
+     */
+    @Override
+    public int getNodeKind() {
+<span class="fc" id="L171">        return Type.ELEMENT;</span>
+    }
+
+    /**
+     * Returns parent.
+     *
+     * @return parent
+     */
+    @Override
+    public NodeInfo getParent() {
+<span class="fc" id="L181">        return parent;</span>
+    }
+
+    /**
+     * Returns root.
+     *
+     * @return root
+     */
+    @Override
+    public AbstractNode getRoot() {
+<span class="fc" id="L191">        return root;</span>
+    }
+
+    /**
+     * Determines axis iteration algorithm. Throws {@code UnsupportedOperationException} in case,
+     * when there is no axis iterator for given axisNumber.
+     *
+     * &lt;p&gt;Reason of suppression for resource, IOResourceOpenedButNotSafelyClosed:
+     * {@link AxisIterator} implements {@link java.io.Closeable} interface,
+     * but none of the subclasses of the {@link AxisIterator}
+     * class has non-empty {@code close()} method.
+     *
+     * @param axisNumber element from {@code AxisInfo}
+     * @return {@code AxisIterator} object
+     */
+    @Override
+    public AxisIterator iterateAxis(int axisNumber) {
+        final AxisIterator result;
+<span class="fc bfc" id="L209" title="All 13 branches covered.">        switch (axisNumber) {</span>
+            case AxisInfo.ANCESTOR:
+<span class="fc" id="L211">                result = new Navigator.AncestorEnumeration(this, false);</span>
+<span class="fc" id="L212">                break;</span>
+            case AxisInfo.ANCESTOR_OR_SELF:
+<span class="fc" id="L214">                result = new Navigator.AncestorEnumeration(this, true);</span>
+<span class="fc" id="L215">                break;</span>
+            case AxisInfo.ATTRIBUTE:
+<span class="fc" id="L217">                result = SingleNodeIterator.makeIterator(getAttributeNode());</span>
+<span class="fc" id="L218">                break;</span>
+            case AxisInfo.CHILD:
+<span class="fc bfc" id="L220" title="All 2 branches covered.">                if (hasChildNodes()) {</span>
+<span class="fc" id="L221">                    result = new ArrayIterator.OfNodes&lt;&gt;(</span>
+<span class="fc" id="L222">                            getChildren().toArray(EMPTY_ABSTRACT_NODE_ARRAY));</span>
+                }
+                else {
+<span class="fc" id="L225">                    result = EmptyIterator.ofNodes();</span>
+                }
+<span class="fc" id="L227">                break;</span>
+            case AxisInfo.DESCENDANT:
+<span class="fc bfc" id="L229" title="All 2 branches covered.">                if (hasChildNodes()) {</span>
+<span class="fc" id="L230">                    result = new DescendantIterator(this, DescendantIterator.StartWith.CHILDREN);</span>
+                }
+                else {
+<span class="fc" id="L233">                    result = EmptyIterator.ofNodes();</span>
+                }
+<span class="fc" id="L235">                break;</span>
+            case AxisInfo.DESCENDANT_OR_SELF:
+<span class="fc" id="L237">                result = new DescendantIterator(this, DescendantIterator.StartWith.CURRENT_NODE);</span>
+<span class="fc" id="L238">                break;</span>
+            case AxisInfo.PARENT:
+<span class="fc" id="L240">                result = SingleNodeIterator.makeIterator(parent);</span>
+<span class="fc" id="L241">                break;</span>
+            case AxisInfo.SELF:
+<span class="fc" id="L243">                result = SingleNodeIterator.makeIterator(this);</span>
+<span class="fc" id="L244">                break;</span>
+            case AxisInfo.FOLLOWING_SIBLING:
+<span class="fc" id="L246">                result = getFollowingSiblingsIterator();</span>
+<span class="fc" id="L247">                break;</span>
+            case AxisInfo.PRECEDING_SIBLING:
+<span class="fc" id="L249">                result = getPrecedingSiblingsIterator();</span>
+<span class="fc" id="L250">                break;</span>
+            case AxisInfo.FOLLOWING:
+<span class="fc" id="L252">                result = new FollowingIterator(this);</span>
+<span class="fc" id="L253">                break;</span>
+            case AxisInfo.PRECEDING:
+<span class="fc" id="L255">                result = new PrecedingIterator(this);</span>
+<span class="fc" id="L256">                break;</span>
+            default:
+<span class="fc" id="L258">                throw throwUnsupportedOperationException();</span>
+        }
+
+<span class="fc" id="L261">        return result;</span>
+    }
+
+    /**
+     * Returns preceding sibling axis iterator.
+     *
+     * &lt;p&gt;Reason of suppression for resource, IOResourceOpenedButNotSafelyClosed:
+     * {@link AxisIterator} implements {@link java.io.Closeable} interface,
+     * but none of the subclasses of the {@link AxisIterator}
+     * class has non-empty {@code close()} method.
+     *
+     * @return iterator
+     */
+    private AxisIterator getPrecedingSiblingsIterator() {
+        final AxisIterator result;
+<span class="fc bfc" id="L276" title="All 2 branches covered.">        if (indexAmongSiblings == 0) {</span>
+<span class="fc" id="L277">            result = EmptyIterator.ofNodes();</span>
+        }
+        else {
+<span class="fc" id="L280">            result = new ReverseListIterator(getPrecedingSiblings());</span>
+        }
+<span class="fc" id="L282">        return result;</span>
+    }
+
+    /**
+     * Returns following sibling axis iterator.
+     *
+     * &lt;p&gt;Reason of suppression for resource, IOResourceOpenedButNotSafelyClosed:
+     * {@link AxisIterator} implements {@link java.io.Closeable} interface,
+     * but none of the subclasses of the {@link AxisIterator}
+     * class has non-empty {@code close()} method.
+     *
+     * @return iterator
+     */
+    private AxisIterator getFollowingSiblingsIterator() {
+        final AxisIterator result;
+<span class="fc bfc" id="L297" title="All 2 branches covered.">        if (indexAmongSiblings == parent.getChildren().size() - 1) {</span>
+<span class="fc" id="L298">            result = EmptyIterator.ofNodes();</span>
+        }
+        else {
+<span class="fc" id="L301">            result = new ArrayIterator.OfNodes&lt;&gt;(</span>
+<span class="fc" id="L302">                    getFollowingSiblings().toArray(EMPTY_ABSTRACT_NODE_ARRAY));</span>
+        }
+<span class="fc" id="L304">        return result;</span>
+    }
+
+    /**
+     * Returns following siblings of the current node.
+     *
+     * @return siblings
+     */
+    private List&lt;AbstractNode&gt; getFollowingSiblings() {
+<span class="fc" id="L313">        final List&lt;AbstractNode&gt; siblings = parent.getChildren();</span>
+<span class="fc" id="L314">        return siblings.subList(indexAmongSiblings + 1, siblings.size());</span>
+    }
+
+    /**
+     * Returns preceding siblings of the current node.
+     *
+     * @return siblings
+     */
+    private List&lt;AbstractNode&gt; getPrecedingSiblings() {
+<span class="fc" id="L323">        final List&lt;AbstractNode&gt; siblings = parent.getChildren();</span>
+<span class="fc" id="L324">        return UnmodifiableCollectionUtil</span>
+<span class="fc" id="L325">                .unmodifiableList(siblings.subList(0, indexAmongSiblings));</span>
+    }
+
+    /**
+     * Checks if token type supports {@code @text} attribute,
+     * extracts its value, creates {@code AttributeNode} object and returns it.
+     * Value can be accessed using {@code @text} attribute.
+     *
+     * @return attribute node if possible, otherwise the {@code null} value
+     */
+    private AttributeNode getAttributeNode() {
+<span class="fc bfc" id="L336" title="All 2 branches covered.">        if (attributeNode == ATTRIBUTE_NODE_UNINITIALIZED) {</span>
+<span class="fc" id="L337">            attributeNode = createAttributeNode();</span>
+        }
+<span class="fc" id="L339">        return attributeNode;</span>
+    }
+
+    /**
+     * Returns UnsupportedOperationException exception.
+     *
+     * @return UnsupportedOperationException exception
+     */
+    private static UnsupportedOperationException throwUnsupportedOperationException() {
+<span class="fc" id="L348">        return new UnsupportedOperationException(&quot;Operation is not supported&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>
