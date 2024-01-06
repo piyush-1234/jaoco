@@ -38,40 +38,34 @@ import com.puppycrawl.tools.checkstyle.utils.AnnotationUtil;
  *
  * &lt;ul&gt;
  * &lt;li&gt;
- * Property {@code allowClassName} - Controls whether to allow a method name to have the same name
- * as the residing class name. This is not to be confused with a constructor. An easy mistake is
- * to place a return type on a constructor declaration which turns it into a method. For example:
- * &lt;pre&gt;
- * class MyClass {
- *     public void MyClass() {} //this is a method
- *     public MyClass() {} //this is a constructor
- * }
- * &lt;/pre&gt;
+ * Property {@code allowClassName} - Control whether to allow a method name to have the same name
+ * as the enclosing class name. Setting this property {@code false} helps to avoid
+ * confusion between constructors and methods.
  * Type is {@code boolean}.
  * Default value is {@code false}.
  * &lt;/li&gt;
  * &lt;li&gt;
- * Property {@code applyToPackage} - Controls whether to apply the check to package-private member.
+ * Property {@code applyToPackage} - Control if check should apply to package-private members.
  * Type is {@code boolean}.
  * Default value is {@code true}.
  * &lt;/li&gt;
  * &lt;li&gt;
- * Property {@code applyToPrivate} - Controls whether to apply the check to private member.
+ * Property {@code applyToPrivate} - Control if check should apply to private members.
  * Type is {@code boolean}.
  * Default value is {@code true}.
  * &lt;/li&gt;
  * &lt;li&gt;
- * Property {@code applyToProtected} - Controls whether to apply the check to protected member.
+ * Property {@code applyToProtected} - Control if check should apply to protected members.
  * Type is {@code boolean}.
  * Default value is {@code true}.
  * &lt;/li&gt;
  * &lt;li&gt;
- * Property {@code applyToPublic} - Controls whether to apply the check to public member.
+ * Property {@code applyToPublic} - Control if check should apply to public members.
  * Type is {@code boolean}.
  * Default value is {@code true}.
  * &lt;/li&gt;
  * &lt;li&gt;
- * Property {@code format} - Specifies valid identifiers.
+ * Property {@code format} - Sets the pattern to match valid identifiers.
  * Type is {@code java.util.regex.Pattern}.
  * Default value is {@code &quot;^[a-z][a-zA-Z0-9]*$&quot;}.
  * &lt;/li&gt;
@@ -103,83 +97,71 @@ public class MethodNameCheck
     public static final String MSG_KEY = &quot;method.name.equals.class.name&quot;;
 
     /**
-     * Controls whether to allow a method name to have the same name as the residing class name.
-     * This is not to be confused with a constructor. An easy mistake is to place a return type on
-     * a constructor declaration which turns it into a method. For example:
-     * &lt;pre&gt;
-     * class MyClass {
-     *     public void MyClass() {} //this is a method
-     *     public MyClass() {} //this is a constructor
-     * }
-     * &lt;/pre&gt;
+     * Control whether to allow a method name to have the same name as the enclosing class name.
+     * Setting this property {@code false} helps to avoid confusion
+     * between constructors and methods.
      */
     private boolean allowClassName;
 
     /** Creates a new {@code MethodNameCheck} instance. */
     public MethodNameCheck() {
-<span class="fc" id="L120">        super(&quot;^[a-z][a-zA-Z0-9]*$&quot;);</span>
-<span class="fc" id="L121">    }</span>
+<span class="fc" id="L108">        super(&quot;^[a-z][a-zA-Z0-9]*$&quot;);</span>
+<span class="fc" id="L109">    }</span>
 
     @Override
     public int[] getDefaultTokens() {
-<span class="fc" id="L125">        return getRequiredTokens();</span>
+<span class="fc" id="L113">        return getRequiredTokens();</span>
     }
 
     @Override
     public int[] getAcceptableTokens() {
-<span class="fc" id="L130">        return getRequiredTokens();</span>
+<span class="fc" id="L118">        return getRequiredTokens();</span>
     }
 
     @Override
     public int[] getRequiredTokens() {
-<span class="fc" id="L135">        return new int[] {TokenTypes.METHOD_DEF, };</span>
+<span class="fc" id="L123">        return new int[] {TokenTypes.METHOD_DEF, };</span>
     }
 
     @Override
     public void visitToken(DetailAST ast) {
-<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (!AnnotationUtil.hasOverrideAnnotation(ast)) {</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        if (!AnnotationUtil.hasOverrideAnnotation(ast)) {</span>
             // Will check the name against the format.
-<span class="fc" id="L142">            super.visitToken(ast);</span>
+<span class="fc" id="L130">            super.visitToken(ast);</span>
         }
 
-<span class="fc bfc" id="L145" title="All 2 branches covered.">        if (!allowClassName) {</span>
-<span class="fc" id="L146">            final DetailAST method =</span>
-<span class="fc" id="L147">                ast.findFirstToken(TokenTypes.IDENT);</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (!allowClassName) {</span>
+<span class="fc" id="L134">            final DetailAST method =</span>
+<span class="fc" id="L135">                ast.findFirstToken(TokenTypes.IDENT);</span>
             // in all cases this will be the classDef type except anon inner
             // with anon inner classes this will be the Literal_New keyword
-<span class="fc" id="L150">            final DetailAST classDefOrNew = ast.getParent().getParent();</span>
-<span class="fc" id="L151">            final DetailAST classIdent =</span>
-<span class="fc" id="L152">                classDefOrNew.findFirstToken(TokenTypes.IDENT);</span>
+<span class="fc" id="L138">            final DetailAST classDefOrNew = ast.getParent().getParent();</span>
+<span class="fc" id="L139">            final DetailAST classIdent =</span>
+<span class="fc" id="L140">                classDefOrNew.findFirstToken(TokenTypes.IDENT);</span>
             // Following logic is to handle when a classIdent can not be
             // found. This is when you have a Literal_New keyword followed
             // a DOT, which is when you have:
             // new Outclass.InnerInterface(x) { ... }
             // Such a rare case, will not have the logic to handle parsing
             // down the tree looking for the first ident.
-<span class="fc bfc" id="L159" title="All 2 branches covered.">            if (classIdent != null</span>
-<span class="fc bfc" id="L160" title="All 2 branches covered.">                &amp;&amp; method.getText().equals(classIdent.getText())) {</span>
-<span class="fc" id="L161">                log(method, MSG_KEY, method.getText());</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">            if (classIdent != null</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">                &amp;&amp; method.getText().equals(classIdent.getText())) {</span>
+<span class="fc" id="L149">                log(method, MSG_KEY, method.getText());</span>
             }
         }
-<span class="fc" id="L164">    }</span>
+<span class="fc" id="L152">    }</span>
 
     /**
-     * Setter to controls whether to allow a method name to have the same name as the residing
-     * class name. This is not to be confused with a constructor. An easy mistake is to place
-     * a return type on a constructor declaration which turns it into a method. For example:
-     * &lt;pre&gt;
-     * class MyClass {
-     *     public void MyClass() {} //this is a method
-     *     public MyClass() {} //this is a constructor
-     * }
-     * &lt;/pre&gt;
+     * Setter to control whether to allow a method name to have the same name
+     * as the enclosing class name. Setting this property {@code false}
+     * helps to avoid confusion between constructors and methods.
      *
      * @param allowClassName true to allow false to disallow
      * @since 5.0
      */
     public void setAllowClassName(boolean allowClassName) {
-<span class="fc" id="L181">        this.allowClassName = allowClassName;</span>
-<span class="fc" id="L182">    }</span>
+<span class="fc" id="L163">        this.allowClassName = allowClassName;</span>
+<span class="fc" id="L164">    }</span>
 
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

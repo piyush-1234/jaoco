@@ -146,14 +146,14 @@ public final class PropertyCacheFile {
 <span class="fc" id="L146">        Path directory = path.getParent();</span>
 
 <span class="fc bfc" id="L148" title="All 2 branches covered.">        if (directory != null) {</span>
-<span class="fc bfc" id="L149" title="All 2 branches covered.">            if (Files.isSymbolicLink(directory)) {</span>
-<span class="fc" id="L150">                final Path actualDir = directory.toRealPath();</span>
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">            if (Files.isSymbolicLink(directory)) {</span>
+<span class="nc" id="L150">                final Path actualDir = directory.toRealPath();</span>
 
-<span class="fc bfc" id="L152" title="All 2 branches covered.">                if (Files.isDirectory(actualDir)) {</span>
-<span class="fc" id="L153">                    directory = actualDir;</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">                if (Files.isDirectory(actualDir)) {</span>
+<span class="nc" id="L153">                    directory = actualDir;</span>
                 }
                 else {
-<span class="fc" id="L156">                    throw new IOException(</span>
+<span class="nc" id="L156">                    throw new IOException(</span>
                             &quot;Resolved symbolic link &quot; + directory
                                     + &quot; is not a directory.&quot;);
                 }

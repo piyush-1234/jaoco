@@ -233,7 +233,7 @@ checkstyle,com.puppycrawl.tools.checkstyle.meta,ModulePropertyDetails,0,38,0,0,0
 checkstyle,com.puppycrawl.tools.checkstyle.meta,XmlMetaWriter,14,282,4,14,4,76,3,10,0,4
 checkstyle,com.puppycrawl.tools.checkstyle.meta,XmlMetaReader,8,362,0,28,2,83,0,21,0,7
 checkstyle,com.puppycrawl.tools.checkstyle.meta,MetadataGenerationException,0,4,0,0,0,2,0,1,0,1
-checkstyle,com.puppycrawl.tools.checkstyle.site,SiteUtil,221,1649,25,165,43,400,24,117,0,46
+checkstyle,com.puppycrawl.tools.checkstyle.site,SiteUtil,221,1817,25,165,43,428,24,117,0,46
 checkstyle,com.puppycrawl.tools.checkstyle.site,SiteUtil.DescriptionExtractor,0,239,3,41,0,60,3,23,0,4
 checkstyle,com.puppycrawl.tools.checkstyle.site,XdocsTemplateSink,0,46,0,0,0,18,0,6,0,6
 checkstyle,com.puppycrawl.tools.checkstyle.site,ClassAndPropertiesSettersJavadocScraper,0,145,5,17,0,43,5,16,0,10
@@ -349,7 +349,7 @@ checkstyle,com.puppycrawl.tools.checkstyle.utils,BlockCommentPosition,0,412,0,14
 checkstyle,com.puppycrawl.tools.checkstyle.utils,TokenUtil,0,327,0,56,0,65,0,51,0,23
 checkstyle,com.puppycrawl.tools.checkstyle.utils,JavadocUtil,0,372,0,62,0,95,0,47,0,16
 checkstyle,com.puppycrawl.tools.checkstyle,AbstractAutomaticBean.OutputStreamOptions,0,15,0,0,0,3,0,1,0,1
-checkstyle,com.puppycrawl.tools.checkstyle,PropertyCacheFile,0,353,0,26,0,93,0,33,0,20
+checkstyle,com.puppycrawl.tools.checkstyle,PropertyCacheFile,19,334,3,23,4,89,2,31,0,20
 checkstyle,com.puppycrawl.tools.checkstyle,Main.OnlyCheckstyleLoggersFilter,0,14,0,0,0,3,0,2,0,2
 checkstyle,com.puppycrawl.tools.checkstyle,DetailAstImpl,0,482,0,74,0,166,0,76,0,39
 checkstyle,com.puppycrawl.tools.checkstyle,AbstractAutomaticBean.UriConverter,0,20,0,2,0,8,0,2,0,1

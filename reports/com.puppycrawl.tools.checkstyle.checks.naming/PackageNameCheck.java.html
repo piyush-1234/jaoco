@@ -42,7 +42,7 @@ import com.puppycrawl.tools.checkstyle.api.TokenTypes;
  * &lt;/p&gt;
  * &lt;ul&gt;
  * &lt;li&gt;
- * Property {@code format} - Specifies valid identifiers.
+ * Property {@code format} - Control the pattern to match valid identifiers.
  * Type is {@code java.util.regex.Pattern}.
  * Default value is {@code &quot;^[a-z]+(\.[a-zA-Z_]\w*)*$&quot;}.
  * &lt;/li&gt;
@@ -71,14 +71,14 @@ import com.puppycrawl.tools.checkstyle.api.TokenTypes;
      */
     public static final String MSG_KEY = &quot;name.invalidPattern&quot;;
 
-    /** Specifies valid identifiers. */
+    /** Control the pattern to match valid identifiers. */
     // Uppercase letters seem rather uncommon, but they're allowed in
     // https://docs.oracle.com/javase/specs/
     //  second_edition/html/packages.doc.html#40169
 <span class="fc" id="L78">    private Pattern format = Pattern.compile(&quot;^[a-z]+(\\.[a-zA-Z_]\\w*)*$&quot;);</span>
 
     /**
-     * Setter to specifies valid identifiers.
+     * Setter to control the pattern to match valid identifiers.
      *
      * @param pattern the new pattern
      * @since 3.0
