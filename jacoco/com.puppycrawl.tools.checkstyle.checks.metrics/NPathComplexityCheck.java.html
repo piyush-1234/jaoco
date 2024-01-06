@@ -1,0 +1,615 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NPathComplexityCheck.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.checks.metrics</a> &gt; <span class="el_source">NPathComplexityCheck.java</span></div><h1>NPathComplexityCheck.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.checks.metrics;
+
+import java.math.BigInteger;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import com.puppycrawl.tools.checkstyle.FileStatefulCheck;
+import com.puppycrawl.tools.checkstyle.api.AbstractCheck;
+import com.puppycrawl.tools.checkstyle.api.DetailAST;
+import com.puppycrawl.tools.checkstyle.api.TokenTypes;
+import com.puppycrawl.tools.checkstyle.utils.TokenUtil;
+
+/**
+ * &lt;p&gt;
+ * Checks the NPATH complexity against a specified limit.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The NPATH metric computes the number of possible execution paths through a
+ * function(method). It takes into account the nesting of conditional statements
+ * and multipart boolean expressions (A &amp;amp;&amp;amp; B, C || D, E ? F :G and
+ * their combinations).
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The NPATH metric was designed base on Cyclomatic complexity to avoid problem
+ * of Cyclomatic complexity metric like nesting level within a function(method).
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Metric was described at &lt;a href=&quot;http://dl.acm.org/citation.cfm?id=42379&quot;&gt;
+ * &quot;NPATH: a measure of execution pathcomplexity and its applications&quot;&lt;/a&gt;.
+ * If you need detailed description of algorithm, please read that article,
+ * it is well written and have number of examples and details.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Here is some quotes:
+ * &lt;/p&gt;
+ * &lt;blockquote&gt;
+ * An NPATH threshold value of 200 has been established for a function.
+ * The value 200 is based on studies done at AT&amp;amp;T Bell Laboratories [1988 year].
+ * &lt;/blockquote&gt;
+ * &lt;blockquote&gt;
+ * Some of the most effective methods of reducing the NPATH value include:
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * distributing functionality;
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * implementing multiple if statements as a switch statement;
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * creating a separate function for logical expressions with a high count of
+ * variables and (&amp;amp;&amp;amp;) and or (||) operators.
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;/blockquote&gt;
+ * &lt;blockquote&gt;
+ * Although strategies to reduce the NPATH complexity of functions are important,
+ * care must be taken not to distort the logical clarity of the software by
+ * applying a strategy to reduce the complexity of functions. That is, there is
+ * a point of diminishing return beyond which a further attempt at reduction of
+ * complexity distorts the logical clarity of the system structure.
+ * &lt;/blockquote&gt;
+ * &lt;table&gt;
+ * &lt;caption&gt;Examples&lt;/caption&gt;
+ * &lt;thead&gt;&lt;tr&gt;&lt;th&gt;Structure&lt;/th&gt;&lt;th&gt;Complexity expression&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;
+ * &lt;tr&gt;&lt;td&gt;if ([expr]) { [if-range] }&lt;/td&gt;&lt;td&gt;NP(if-range) + 1 + NP(expr)&lt;/td&gt;&lt;/tr&gt;
+ * &lt;tr&gt;&lt;td&gt;if ([expr]) { [if-range] } else { [else-range] }&lt;/td&gt;
+ * &lt;td&gt;NP(if-range)+ NP(else-range) + NP(expr)&lt;/td&gt;&lt;/tr&gt;
+ * &lt;tr&gt;&lt;td&gt;while ([expr]) { [while-range] }&lt;/td&gt;&lt;td&gt;NP(while-range) + NP(expr) + 1&lt;/td&gt;&lt;/tr&gt;
+ * &lt;tr&gt;&lt;td&gt;do { [do-range] } while ([expr])&lt;/td&gt;&lt;td&gt;NP(do-range) + NP(expr) + 1&lt;/td&gt;&lt;/tr&gt;
+ * &lt;tr&gt;&lt;td&gt;for([expr1]; [expr2]; [expr3]) { [for-range] }&lt;/td&gt;
+ * &lt;td&gt;NP(for-range) + NP(expr1)+ NP(expr2) + NP(expr3) + 1&lt;/td&gt;&lt;/tr&gt;
+ * &lt;tr&gt;&lt;td&gt;switch ([expr]) { case : [case-range] default: [default-range] }&lt;/td&gt;
+ * &lt;td&gt;S(i=1:i=n)NP(case-range[i]) + NP(default-range) + NP(expr)&lt;/td&gt;&lt;/tr&gt;
+ * &lt;tr&gt;&lt;td&gt;[expr1] ? [expr2] : [expr3]&lt;/td&gt;&lt;td&gt;NP(expr1) + NP(expr2) + NP(expr3) + 2&lt;/td&gt;&lt;/tr&gt;
+ * &lt;tr&gt;&lt;td&gt;goto label&lt;/td&gt;&lt;td&gt;1&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;break&lt;/td&gt;&lt;td&gt;1&lt;/td&gt;&lt;/tr&gt;
+ * &lt;tr&gt;&lt;td&gt;Expressions&lt;/td&gt;
+ * &lt;td&gt;Number of &amp;amp;&amp;amp; and || operators in expression. No operators - 0&lt;/td&gt;&lt;/tr&gt;
+ * &lt;tr&gt;&lt;td&gt;continue&lt;/td&gt;&lt;td&gt;1&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;return&lt;/td&gt;&lt;td&gt;1&lt;/td&gt;&lt;/tr&gt;
+ * &lt;tr&gt;&lt;td&gt;Statement (even sequential statements)&lt;/td&gt;&lt;td&gt;1&lt;/td&gt;&lt;/tr&gt;
+ * &lt;tr&gt;&lt;td&gt;Empty block {}&lt;/td&gt;&lt;td&gt;1&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Function call&lt;/td&gt;&lt;td&gt;1&lt;/td&gt;
+ * &lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Function(Method) declaration or Block&lt;/td&gt;&lt;td&gt;P(i=1:i=N)NP(Statement[i])&lt;/td&gt;&lt;/tr&gt;
+ * &lt;/table&gt;
+ * &lt;p&gt;
+ * &lt;b&gt;Rationale:&lt;/b&gt; Nejmeh says that his group had an informal NPATH limit of
+ * 200 on individual routines; functions(methods) that exceeded this value were
+ * candidates for further decomposition - or at least a closer look.
+ * &lt;b&gt;Please do not be fanatic with limit 200&lt;/b&gt; - choose number that suites
+ * your project style. Limit 200 is empirical number base on some sources of at
+ * AT&amp;amp;T Bell Laboratories of 1988 year.
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * Property {@code max} - Specify the maximum threshold allowed.
+ * Type is {@code int}.
+ * Default value is {@code 200}.
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Parent is {@code com.puppycrawl.tools.checkstyle.TreeWalker}
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Violation Message Keys:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * {@code npathComplexity}
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * @since 3.4
+ */
+// -@cs[AbbreviationAsWordInName] Can't change check name
+@FileStatefulCheck
+<span class="fc" id="L134">public final class NPathComplexityCheck extends AbstractCheck {</span>
+
+    /**
+     * A key is pointing to the warning message text in &quot;messages.properties&quot;
+     * file.
+     */
+    public static final String MSG_KEY = &quot;npathComplexity&quot;;
+
+    /** Default allowed complexity. */
+    private static final int DEFAULT_MAX = 200;
+
+    /** The initial current value. */
+<span class="fc" id="L146">    private static final BigInteger INITIAL_VALUE = BigInteger.ZERO;</span>
+
+    /**
+     * Stack of NP values for ranges.
+     */
+<span class="fc" id="L151">    private final Deque&lt;BigInteger&gt; rangeValues = new ArrayDeque&lt;&gt;();</span>
+
+    /** Stack of NP values for expressions. */
+<span class="fc" id="L154">    private final Deque&lt;Integer&gt; expressionValues = new ArrayDeque&lt;&gt;();</span>
+
+    /** Stack of belongs to range values for question operator. */
+<span class="fc" id="L157">    private final Deque&lt;Boolean&gt; afterValues = new ArrayDeque&lt;&gt;();</span>
+
+    /**
+     * Range of the last processed expression. Used for checking that ternary operation
+     * which is a part of expression won't be processed for second time.
+     */
+<span class="fc" id="L163">    private final TokenEnd processingTokenEnd = new TokenEnd();</span>
+
+    /** NP value for current range. */
+    private BigInteger currentRangeValue;
+
+    /** Specify the maximum threshold allowed. */
+<span class="fc" id="L169">    private int max = DEFAULT_MAX;</span>
+
+    /** True, when branch is visited, but not leaved. */
+    private boolean branchVisited;
+
+    /**
+     * Setter to specify the maximum threshold allowed.
+     *
+     * @param max the maximum threshold
+     * @since 3.4
+     */
+    public void setMax(int max) {
+<span class="fc" id="L181">        this.max = max;</span>
+<span class="fc" id="L182">    }</span>
+
+    @Override
+    public int[] getDefaultTokens() {
+<span class="fc" id="L186">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+<span class="fc" id="L191">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getRequiredTokens() {
+<span class="fc" id="L196">        return new int[] {</span>
+            TokenTypes.CTOR_DEF,
+            TokenTypes.METHOD_DEF,
+            TokenTypes.STATIC_INIT,
+            TokenTypes.INSTANCE_INIT,
+            TokenTypes.LITERAL_WHILE,
+            TokenTypes.LITERAL_DO,
+            TokenTypes.LITERAL_FOR,
+            TokenTypes.LITERAL_IF,
+            TokenTypes.LITERAL_ELSE,
+            TokenTypes.LITERAL_SWITCH,
+            TokenTypes.CASE_GROUP,
+            TokenTypes.LITERAL_TRY,
+            TokenTypes.LITERAL_CATCH,
+            TokenTypes.QUESTION,
+            TokenTypes.LITERAL_RETURN,
+            TokenTypes.LITERAL_DEFAULT,
+            TokenTypes.COMPACT_CTOR_DEF,
+            TokenTypes.SWITCH_RULE,
+        };
+    }
+
+    @Override
+    public void beginTree(DetailAST rootAST) {
+<span class="fc" id="L220">        rangeValues.clear();</span>
+<span class="fc" id="L221">        expressionValues.clear();</span>
+<span class="fc" id="L222">        afterValues.clear();</span>
+<span class="fc" id="L223">        processingTokenEnd.reset();</span>
+<span class="fc" id="L224">        currentRangeValue = INITIAL_VALUE;</span>
+<span class="fc" id="L225">        branchVisited = false;</span>
+<span class="fc" id="L226">    }</span>
+
+    @Override
+    public void visitToken(DetailAST ast) {
+<span class="fc bfc" id="L230" title="All 9 branches covered.">        switch (ast.getType()) {</span>
+            case TokenTypes.LITERAL_IF:
+            case TokenTypes.LITERAL_SWITCH:
+            case TokenTypes.LITERAL_WHILE:
+            case TokenTypes.LITERAL_DO:
+            case TokenTypes.LITERAL_FOR:
+<span class="fc" id="L236">                visitConditional(ast, 1);</span>
+<span class="fc" id="L237">                break;</span>
+            case TokenTypes.QUESTION:
+<span class="fc" id="L239">                visitUnitaryOperator(ast, 2);</span>
+<span class="fc" id="L240">                break;</span>
+            case TokenTypes.LITERAL_RETURN:
+<span class="fc" id="L242">                visitUnitaryOperator(ast, 0);</span>
+<span class="fc" id="L243">                break;</span>
+            case TokenTypes.CASE_GROUP:
+<span class="fc" id="L245">                final int caseNumber = countCaseTokens(ast);</span>
+<span class="fc" id="L246">                branchVisited = true;</span>
+<span class="fc" id="L247">                pushValue(caseNumber);</span>
+<span class="fc" id="L248">                break;</span>
+            case TokenTypes.SWITCH_RULE:
+<span class="fc" id="L250">                final int caseConstantNumber = countCaseConstants(ast);</span>
+<span class="fc" id="L251">                branchVisited = true;</span>
+<span class="fc" id="L252">                pushValue(caseConstantNumber);</span>
+<span class="fc" id="L253">                break;</span>
+            case TokenTypes.LITERAL_ELSE:
+<span class="fc" id="L255">                branchVisited = true;</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">                if (currentRangeValue.equals(BigInteger.ZERO)) {</span>
+<span class="fc" id="L257">                    currentRangeValue = BigInteger.ONE;</span>
+                }
+<span class="fc" id="L259">                pushValue(0);</span>
+<span class="fc" id="L260">                break;</span>
+            case TokenTypes.LITERAL_TRY:
+            case TokenTypes.LITERAL_CATCH:
+            case TokenTypes.LITERAL_DEFAULT:
+<span class="fc" id="L264">                pushValue(1);</span>
+<span class="fc" id="L265">                break;</span>
+            case TokenTypes.CTOR_DEF:
+            case TokenTypes.METHOD_DEF:
+            case TokenTypes.INSTANCE_INIT:
+            case TokenTypes.STATIC_INIT:
+            case TokenTypes.COMPACT_CTOR_DEF:
+<span class="fc" id="L271">                pushValue(0);</span>
+<span class="fc" id="L272">                break;</span>
+            default:
+                break;
+        }
+<span class="fc" id="L276">    }</span>
+
+    @Override
+    public void leaveToken(DetailAST ast) {
+<span class="fc bfc" id="L280" title="All 8 branches covered.">        switch (ast.getType()) {</span>
+            case TokenTypes.LITERAL_WHILE:
+            case TokenTypes.LITERAL_DO:
+            case TokenTypes.LITERAL_FOR:
+            case TokenTypes.LITERAL_IF:
+            case TokenTypes.LITERAL_SWITCH:
+<span class="fc" id="L286">                leaveConditional();</span>
+<span class="fc" id="L287">                break;</span>
+            case TokenTypes.LITERAL_TRY:
+<span class="fc" id="L289">                leaveMultiplyingConditional();</span>
+<span class="fc" id="L290">                break;</span>
+            case TokenTypes.LITERAL_RETURN:
+            case TokenTypes.QUESTION:
+<span class="fc" id="L293">                leaveUnitaryOperator();</span>
+<span class="fc" id="L294">                break;</span>
+            case TokenTypes.LITERAL_CATCH:
+<span class="fc" id="L296">                leaveAddingConditional();</span>
+<span class="fc" id="L297">                break;</span>
+            case TokenTypes.LITERAL_DEFAULT:
+<span class="fc" id="L299">                leaveBranch();</span>
+<span class="fc" id="L300">                break;</span>
+            case TokenTypes.LITERAL_ELSE:
+            case TokenTypes.CASE_GROUP:
+            case TokenTypes.SWITCH_RULE:
+<span class="fc" id="L304">                leaveBranch();</span>
+<span class="fc" id="L305">                branchVisited = false;</span>
+<span class="fc" id="L306">                break;</span>
+            case TokenTypes.CTOR_DEF:
+            case TokenTypes.METHOD_DEF:
+            case TokenTypes.INSTANCE_INIT:
+            case TokenTypes.STATIC_INIT:
+            case TokenTypes.COMPACT_CTOR_DEF:
+<span class="fc" id="L312">                leaveMethodDef(ast);</span>
+<span class="fc" id="L313">                break;</span>
+            default:
+                break;
+        }
+<span class="fc" id="L317">    }</span>
+
+    /**
+     * Visits if, while, do-while, for and switch tokens - all of them have expression in
+     * parentheses which is used for calculation.
+     *
+     * @param ast visited token.
+     * @param basicBranchingFactor default number of branches added.
+     */
+    private void visitConditional(DetailAST ast, int basicBranchingFactor) {
+<span class="fc" id="L327">        int expressionValue = basicBranchingFactor;</span>
+        DetailAST bracketed;
+<span class="fc" id="L329">        for (bracketed = ast.findFirstToken(TokenTypes.LPAREN);</span>
+<span class="fc bfc" id="L330" title="All 2 branches covered.">                bracketed.getType() != TokenTypes.RPAREN;</span>
+<span class="fc" id="L331">                bracketed = bracketed.getNextSibling()) {</span>
+<span class="fc" id="L332">            expressionValue += countConditionalOperators(bracketed);</span>
+        }
+<span class="fc" id="L334">        processingTokenEnd.setToken(bracketed);</span>
+<span class="fc" id="L335">        pushValue(expressionValue);</span>
+<span class="fc" id="L336">    }</span>
+
+    /**
+     * Visits ternary operator (?:) and return tokens. They differ from those processed by
+     * visitConditional method in that their expression isn't bracketed.
+     *
+     * @param ast visited token.
+     * @param basicBranchingFactor number of branches inherently added by this token.
+     */
+    private void visitUnitaryOperator(DetailAST ast, int basicBranchingFactor) {
+<span class="fc" id="L346">        final boolean isAfter = processingTokenEnd.isAfter(ast);</span>
+<span class="fc" id="L347">        afterValues.push(isAfter);</span>
+<span class="fc bfc" id="L348" title="All 2 branches covered.">        if (!isAfter) {</span>
+<span class="fc" id="L349">            processingTokenEnd.setToken(getLastToken(ast));</span>
+<span class="fc" id="L350">            final int expressionValue = basicBranchingFactor + countConditionalOperators(ast);</span>
+<span class="fc" id="L351">            pushValue(expressionValue);</span>
+        }
+<span class="fc" id="L353">    }</span>
+
+    /**
+     * Leaves ternary operator (?:) and return tokens.
+     */
+    private void leaveUnitaryOperator() {
+<span class="fc bfc" id="L359" title="All 2 branches covered.">        if (Boolean.FALSE.equals(afterValues.pop())) {</span>
+<span class="fc" id="L360">            final Values valuePair = popValue();</span>
+<span class="fc" id="L361">            BigInteger basicRangeValue = valuePair.getRangeValue();</span>
+<span class="fc" id="L362">            BigInteger expressionValue = valuePair.getExpressionValue();</span>
+<span class="fc bfc" id="L363" title="All 2 branches covered.">            if (expressionValue.equals(BigInteger.ZERO)) {</span>
+<span class="fc" id="L364">                expressionValue = BigInteger.ONE;</span>
+            }
+<span class="fc bfc" id="L366" title="All 2 branches covered.">            if (basicRangeValue.equals(BigInteger.ZERO)) {</span>
+<span class="fc" id="L367">                basicRangeValue = BigInteger.ONE;</span>
+            }
+<span class="fc" id="L369">            currentRangeValue = currentRangeValue.add(expressionValue).multiply(basicRangeValue);</span>
+        }
+<span class="fc" id="L371">    }</span>
+
+    /** Leaves while, do, for, if, ternary (?::), return or switch. */
+    private void leaveConditional() {
+<span class="fc" id="L375">        final Values valuePair = popValue();</span>
+<span class="fc" id="L376">        final BigInteger expressionValue = valuePair.getExpressionValue();</span>
+<span class="fc" id="L377">        BigInteger basicRangeValue = valuePair.getRangeValue();</span>
+<span class="fc bfc" id="L378" title="All 2 branches covered.">        if (currentRangeValue.equals(BigInteger.ZERO)) {</span>
+<span class="fc" id="L379">            currentRangeValue = BigInteger.ONE;</span>
+        }
+<span class="fc bfc" id="L381" title="All 2 branches covered.">        if (basicRangeValue.equals(BigInteger.ZERO)) {</span>
+<span class="fc" id="L382">            basicRangeValue = BigInteger.ONE;</span>
+        }
+<span class="fc" id="L384">        currentRangeValue = currentRangeValue.add(expressionValue).multiply(basicRangeValue);</span>
+<span class="fc" id="L385">    }</span>
+
+    /** Leaves else, default or case group tokens. */
+    private void leaveBranch() {
+<span class="fc" id="L389">        final Values valuePair = popValue();</span>
+<span class="fc" id="L390">        final BigInteger basicRangeValue = valuePair.getRangeValue();</span>
+<span class="fc" id="L391">        final BigInteger expressionValue = valuePair.getExpressionValue();</span>
+<span class="fc bfc" id="L392" title="All 4 branches covered.">        if (branchVisited &amp;&amp; currentRangeValue.equals(BigInteger.ZERO)) {</span>
+<span class="fc" id="L393">            currentRangeValue = BigInteger.ONE;</span>
+        }
+<span class="fc" id="L395">        currentRangeValue = currentRangeValue.subtract(BigInteger.ONE)</span>
+<span class="fc" id="L396">                .add(basicRangeValue)</span>
+<span class="fc" id="L397">                .add(expressionValue);</span>
+<span class="fc" id="L398">    }</span>
+
+    /**
+     * Process the end of a method definition.
+     *
+     * @param ast the token type representing the method definition
+     */
+    private void leaveMethodDef(DetailAST ast) {
+<span class="fc" id="L406">        final BigInteger bigIntegerMax = BigInteger.valueOf(max);</span>
+<span class="fc bfc" id="L407" title="All 2 branches covered.">        if (currentRangeValue.compareTo(bigIntegerMax) &gt; 0) {</span>
+<span class="fc" id="L408">            log(ast, MSG_KEY, currentRangeValue, bigIntegerMax);</span>
+        }
+<span class="fc" id="L410">        popValue();</span>
+<span class="fc" id="L411">        currentRangeValue = INITIAL_VALUE;</span>
+<span class="fc" id="L412">    }</span>
+
+    /** Leaves catch. */
+    private void leaveAddingConditional() {
+<span class="fc" id="L416">        currentRangeValue = currentRangeValue.add(popValue().getRangeValue().add(BigInteger.ONE));</span>
+<span class="fc" id="L417">    }</span>
+
+    /**
+     * Pushes the current range value on the range value stack. Pushes this token expression value
+     * on the expression value stack.
+     *
+     * @param expressionValue value of expression calculated for current token.
+     */
+    private void pushValue(Integer expressionValue) {
+<span class="fc" id="L426">        rangeValues.push(currentRangeValue);</span>
+<span class="fc" id="L427">        expressionValues.push(expressionValue);</span>
+<span class="fc" id="L428">        currentRangeValue = INITIAL_VALUE;</span>
+<span class="fc" id="L429">    }</span>
+
+    /**
+     * Pops values from both stack of expression values and stack of range values.
+     *
+     * @return pair of head values from both of the stacks.
+     */
+    private Values popValue() {
+<span class="fc" id="L437">        final int expressionValue = expressionValues.pop();</span>
+<span class="fc" id="L438">        return new Values(rangeValues.pop(), BigInteger.valueOf(expressionValue));</span>
+    }
+
+    /** Leaves try. */
+    private void leaveMultiplyingConditional() {
+<span class="fc" id="L443">        currentRangeValue = currentRangeValue.add(BigInteger.ONE)</span>
+<span class="fc" id="L444">                .multiply(popValue().getRangeValue().add(BigInteger.ONE));</span>
+<span class="fc" id="L445">    }</span>
+
+    /**
+     * Calculates number of conditional operators, including inline ternary operator, for a token.
+     *
+     * @param ast inspected token.
+     * @return number of conditional operators.
+     * @see &lt;a href=&quot;https://docs.oracle.com/javase/specs/jls/se8/html/jls-15.html#jls-15.23&quot;&gt;
+     * Java Language Specification, &amp;sect;15.23&lt;/a&gt;
+     * @see &lt;a href=&quot;https://docs.oracle.com/javase/specs/jls/se8/html/jls-15.html#jls-15.24&quot;&gt;
+     * Java Language Specification, &amp;sect;15.24&lt;/a&gt;
+     * @see &lt;a href=&quot;https://docs.oracle.com/javase/specs/jls/se8/html/jls-15.html#jls-15.25&quot;&gt;
+     * Java Language Specification, &amp;sect;15.25&lt;/a&gt;
+     */
+    private static int countConditionalOperators(DetailAST ast) {
+<span class="fc" id="L460">        int number = 0;</span>
+<span class="fc bfc" id="L461" title="All 2 branches covered.">        for (DetailAST child = ast.getFirstChild(); child != null;</span>
+<span class="fc" id="L462">                child = child.getNextSibling()) {</span>
+<span class="fc" id="L463">            final int type = child.getType();</span>
+<span class="fc bfc" id="L464" title="All 4 branches covered.">            if (type == TokenTypes.LOR || type == TokenTypes.LAND) {</span>
+<span class="fc" id="L465">                number++;</span>
+            }
+<span class="fc bfc" id="L467" title="All 2 branches covered.">            else if (type == TokenTypes.QUESTION) {</span>
+<span class="fc" id="L468">                number += 2;</span>
+            }
+<span class="fc" id="L470">            number += countConditionalOperators(child);</span>
+        }
+<span class="fc" id="L472">        return number;</span>
+    }
+
+    /**
+     * Finds a leaf, which is the most distant from the root.
+     *
+     * @param ast the root of tree.
+     * @return the leaf.
+     */
+    private static DetailAST getLastToken(DetailAST ast) {
+<span class="fc" id="L482">        final DetailAST lastChild = ast.getLastChild();</span>
+        final DetailAST result;
+<span class="fc bfc" id="L484" title="All 2 branches covered.">        if (lastChild.getFirstChild() == null) {</span>
+<span class="fc" id="L485">            result = lastChild;</span>
+        }
+        else {
+<span class="fc" id="L488">            result = getLastToken(lastChild);</span>
+        }
+<span class="fc" id="L490">        return result;</span>
+    }
+
+    /**
+     * Counts number of case tokens subject to a case group token.
+     *
+     * @param ast case group token.
+     * @return number of case tokens.
+     */
+    private static int countCaseTokens(DetailAST ast) {
+<span class="fc" id="L500">        int counter = 0;</span>
+<span class="fc bfc" id="L501" title="All 2 branches covered.">        for (DetailAST iterator = ast.getFirstChild(); iterator != null;</span>
+<span class="fc" id="L502">                iterator = iterator.getNextSibling()) {</span>
+<span class="fc bfc" id="L503" title="All 2 branches covered.">            if (iterator.getType() == TokenTypes.LITERAL_CASE) {</span>
+<span class="fc" id="L504">                counter++;</span>
+            }
+        }
+<span class="fc" id="L507">        return counter;</span>
+    }
+
+    /**
+     * Counts number of case constants (EXPR) tokens in a switch labeled rule.
+     *
+     * @param ast switch rule token.
+     * @return number of case constant (EXPR) tokens.
+     */
+    private static int countCaseConstants(DetailAST ast) {
+<span class="fc" id="L517">        final AtomicInteger counter = new AtomicInteger();</span>
+<span class="fc" id="L518">        final DetailAST literalCase = ast.getFirstChild();</span>
+
+<span class="fc" id="L520">        TokenUtil.forEachChild(literalCase,</span>
+<span class="fc" id="L521">            TokenTypes.EXPR, node -&gt; counter.getAndIncrement());</span>
+
+<span class="fc" id="L523">        return counter.get();</span>
+    }
+
+    /**
+     * Coordinates of token end. Used to prevent inline ternary
+     * operator from being processed twice.
+     */
+    private static final class TokenEnd {
+
+        /** End line of token. */
+        private int endLineNo;
+
+        /** End column of token. */
+        private int endColumnNo;
+
+        /**
+         * Sets end coordinates from given token.
+         *
+         * @param endToken token.
+         */
+        public void setToken(DetailAST endToken) {
+<span class="fc bfc" id="L544" title="All 2 branches covered.">            if (!isAfter(endToken)) {</span>
+<span class="fc" id="L545">                endLineNo = endToken.getLineNo();</span>
+<span class="fc" id="L546">                endColumnNo = endToken.getColumnNo();</span>
+            }
+<span class="fc" id="L548">        }</span>
+
+        /** Sets end token coordinates to the start of the file. */
+        public void reset() {
+<span class="fc" id="L552">            endLineNo = 0;</span>
+<span class="fc" id="L553">            endColumnNo = 0;</span>
+<span class="fc" id="L554">        }</span>
+
+        /**
+         * Checks if saved coordinates located after given token.
+         *
+         * @param ast given token.
+         * @return true, if saved coordinates located after given token.
+         */
+        public boolean isAfter(DetailAST ast) {
+<span class="fc" id="L563">            final int lineNo = ast.getLineNo();</span>
+<span class="fc" id="L564">            final int columnNo = ast.getColumnNo();</span>
+<span class="fc bfc" id="L565" title="All 6 branches covered.">            return lineNo &lt;= endLineNo</span>
+                &amp;&amp; (lineNo != endLineNo
+                || columnNo &lt;= endColumnNo);
+        }
+
+    }
+
+    /**
+     * Class that store range value and expression value.
+     */
+    private static final class Values {
+
+        /** NP value for range. */
+        private final BigInteger rangeValue;
+
+        /** NP value for expression. */
+        private final BigInteger expressionValue;
+
+        /**
+         * Constructor that assigns all of class fields.
+         *
+         * @param valueOfRange NP value for range
+         * @param valueOfExpression NP value for expression
+         */
+<span class="fc" id="L589">        private Values(BigInteger valueOfRange, BigInteger valueOfExpression) {</span>
+<span class="fc" id="L590">            rangeValue = valueOfRange;</span>
+<span class="fc" id="L591">            expressionValue = valueOfExpression;</span>
+<span class="fc" id="L592">        }</span>
+
+        /**
+         * Returns NP value for range.
+         *
+         * @return NP value for range
+         */
+        public BigInteger getRangeValue() {
+<span class="fc" id="L600">            return rangeValue;</span>
+        }
+
+        /**
+         * Returns NP value for expression.
+         *
+         * @return NP value for expression
+         */
+        public BigInteger getExpressionValue() {
+<span class="fc" id="L609">            return expressionValue;</span>
+        }
+
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NoWhitespaceBeforeCaseDefaultColonCheck.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.checks.whitespace</a> &gt; <span class="el_source">NoWhitespaceBeforeCaseDefaultColonCheck.java</span></div><h1>NoWhitespaceBeforeCaseDefaultColonCheck.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.checks.whitespace;
+
+import com.puppycrawl.tools.checkstyle.StatelessCheck;
+import com.puppycrawl.tools.checkstyle.api.AbstractCheck;
+import com.puppycrawl.tools.checkstyle.api.DetailAST;
+import com.puppycrawl.tools.checkstyle.api.TokenTypes;
+import com.puppycrawl.tools.checkstyle.utils.TokenUtil;
+
+/**
+ * &lt;p&gt;
+ * Checks that there is no whitespace before the colon in a switch block.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Parent is {@code com.puppycrawl.tools.checkstyle.TreeWalker}
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Violation Message Keys:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * {@code ws.preceded}
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * @since 8.45
+ */
+@StatelessCheck
+<span class="fc" id="L47">public class NoWhitespaceBeforeCaseDefaultColonCheck</span>
+    extends AbstractCheck {
+
+    /**
+     * A key is pointing to the warning message text in &quot;messages.properties&quot;
+     * file.
+     */
+    public static final String MSG_KEY = &quot;ws.preceded&quot;;
+
+    @Override
+    public int[] getDefaultTokens() {
+<span class="fc" id="L58">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+<span class="fc" id="L63">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getRequiredTokens() {
+<span class="fc" id="L68">        return new int[] {TokenTypes.COLON};</span>
+    }
+
+    @Override
+    public boolean isCommentNodesRequired() {
+<span class="fc" id="L73">        return true;</span>
+    }
+
+    @Override
+    public void visitToken(DetailAST ast) {
+<span class="fc bfc" id="L78" title="All 4 branches covered.">        if (isInSwitch(ast) &amp;&amp; isWhiteSpaceBeforeColon(ast)) {</span>
+<span class="fc" id="L79">            log(ast, MSG_KEY, ast.getText());</span>
+        }
+<span class="fc" id="L81">    }</span>
+
+    /**
+     * Checks if the colon is inside a switch block.
+     *
+     * @param colonAst DetailAST to check.
+     * @return true, if colon case is inside a switch block.
+     */
+    private static boolean isInSwitch(DetailAST colonAst) {
+<span class="fc" id="L90">        return TokenUtil.isOfType(colonAst.getParent(), TokenTypes.LITERAL_CASE,</span>
+                TokenTypes.LITERAL_DEFAULT);
+    }
+
+    /**
+     * Checks if there is a whitespace before the colon of a switch case or switch default.
+     *
+     * @param colonAst DetailAST to check.
+     * @return true, if there is whitespace preceding colonAst.
+     */
+    private static boolean isWhiteSpaceBeforeColon(DetailAST colonAst) {
+<span class="fc" id="L101">        final DetailAST parent = colonAst.getParent();</span>
+        final boolean result;
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (isOnDifferentLineWithPreviousToken(colonAst)) {</span>
+<span class="fc" id="L104">            result = true;</span>
+        }
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        else if (parent.getType() == TokenTypes.LITERAL_CASE) {</span>
+<span class="fc" id="L107">            result = isWhitespaceBeforeColonOfCase(colonAst);</span>
+        }
+        else {
+<span class="fc" id="L110">            result = isWhitespaceBeforeColonOfDefault(colonAst);</span>
+        }
+<span class="fc" id="L112">        return result;</span>
+    }
+
+    /**
+     * Checks if there is a whitespace before the colon of a switch case.
+     *
+     * @param colonAst DetailAST to check.
+     * @return true, if there is whitespace preceding colonAst.
+     */
+    private static boolean isWhitespaceBeforeColonOfCase(DetailAST colonAst) {
+<span class="fc" id="L122">        final DetailAST previousSibling = colonAst.getPreviousSibling();</span>
+<span class="fc" id="L123">        int offset = 0;</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        if (previousSibling.getType() == TokenTypes.BLOCK_COMMENT_BEGIN) {</span>
+<span class="fc" id="L125">            offset = 1;</span>
+        }
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        return colonAst.getColumnNo() != getLastColumnNumberOf(previousSibling) + offset;</span>
+    }
+
+    /**
+     * Checks if there is a whitespace before the colon of a switch default.
+     *
+     * @param colonAst DetailAST to check.
+     * @return true, if there is whitespace preceding colonAst.
+     */
+    private static boolean isWhitespaceBeforeColonOfDefault(DetailAST colonAst) {
+        final boolean result;
+<span class="fc" id="L138">        final DetailAST previousSibling = colonAst.getPreviousSibling();</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        if (previousSibling == null) {</span>
+<span class="fc" id="L140">            final DetailAST literalDefault = colonAst.getParent();</span>
+<span class="fc" id="L141">            result = colonAst.getColumnNo()</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">                    != literalDefault.getColumnNo() + literalDefault.getText().length();</span>
+<span class="fc" id="L143">        }</span>
+        else {
+<span class="fc" id="L145">            result =</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">                    colonAst.getColumnNo() != getLastColumnNumberOf(previousSibling) + 1;</span>
+        }
+<span class="fc" id="L148">        return result;</span>
+    }
+
+    /**
+     * Checks if the colon is on same line as of case or default.
+     *
+     * @param colonAst DetailAST to check.
+     * @return true, if colon case is in different line as of case or default.
+     */
+    private static boolean isOnDifferentLineWithPreviousToken(DetailAST colonAst) {
+        final DetailAST previousSibling;
+<span class="fc" id="L159">        final DetailAST parent = colonAst.getParent();</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        if (parent.getType() == TokenTypes.LITERAL_CASE) {</span>
+<span class="fc" id="L161">            previousSibling = colonAst.getPreviousSibling();</span>
+        }
+        else {
+<span class="fc" id="L164">            previousSibling = colonAst.getParent();</span>
+        }
+<span class="fc bfc" id="L166" title="All 2 branches covered.">        return !TokenUtil.areOnSameLine(previousSibling, colonAst);</span>
+    }
+
+    /**
+     * Returns the last column number of an ast.
+     *
+     * @param ast DetailAST to check.
+     * @return ast's last column number.
+     */
+    private static int getLastColumnNumberOf(DetailAST ast) {
+<span class="fc" id="L176">        DetailAST lastChild = ast;</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        while (lastChild.hasChildren()) {</span>
+<span class="fc" id="L178">            lastChild = lastChild.getLastChild();</span>
+        }
+<span class="fc" id="L180">        return lastChild.getColumnNo() + lastChild.getText().length();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

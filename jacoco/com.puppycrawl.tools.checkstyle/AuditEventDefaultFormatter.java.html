@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AuditEventDefaultFormatter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle</a> &gt; <span class="el_source">AuditEventDefaultFormatter.java</span></div><h1>AuditEventDefaultFormatter.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle;
+
+import java.util.Locale;
+
+import com.puppycrawl.tools.checkstyle.api.AuditEvent;
+import com.puppycrawl.tools.checkstyle.api.SeverityLevel;
+
+/**
+ * Represents the default formatter for log message.
+ * Default log message format is:
+ * [SEVERITY LEVEL] filePath:lineNo:columnNo: message. [CheckName]
+ * When the module id of the message has been set, the format is:
+ * [SEVERITY LEVEL] filePath:lineNo:columnNo: message. [ModuleId]
+ */
+<span class="fc" id="L34">public class AuditEventDefaultFormatter implements AuditEventFormatter {</span>
+
+    /** Length of all separators. */
+    private static final int LENGTH_OF_ALL_SEPARATORS = 10;
+
+    /** Suffix of module names like XXXXCheck. */
+    private static final String SUFFIX = &quot;Check&quot;;
+
+    @Override
+    public String format(AuditEvent event) {
+<span class="fc" id="L44">        final String fileName = event.getFileName();</span>
+<span class="fc" id="L45">        final String message = event.getMessage();</span>
+
+<span class="fc" id="L47">        final SeverityLevel severityLevel = event.getSeverityLevel();</span>
+        final String severityLevelName;
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        if (severityLevel == SeverityLevel.WARNING) {</span>
+            // We change the name of severity level intentionally
+            // to shorten the length of the log message.
+<span class="fc" id="L52">            severityLevelName = &quot;WARN&quot;;</span>
+        }
+        else {
+<span class="fc" id="L55">            severityLevelName = severityLevel.getName().toUpperCase(Locale.US);</span>
+        }
+
+<span class="fc" id="L58">        final StringBuilder sb = initStringBuilderWithOptimalBuffer(event, severityLevelName);</span>
+
+<span class="fc" id="L60">        sb.append('[').append(severityLevelName).append(&quot;] &quot;)</span>
+<span class="fc" id="L61">            .append(fileName).append(':').append(event.getLine());</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        if (event.getColumn() &gt; 0) {</span>
+<span class="fc" id="L63">            sb.append(':').append(event.getColumn());</span>
+        }
+<span class="fc" id="L65">        sb.append(&quot;: &quot;).append(message).append(&quot; [&quot;);</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (event.getModuleId() == null) {</span>
+<span class="fc" id="L67">            final String checkShortName = getCheckShortName(event);</span>
+<span class="fc" id="L68">            sb.append(checkShortName);</span>
+<span class="fc" id="L69">        }</span>
+        else {
+<span class="fc" id="L71">            sb.append(event.getModuleId());</span>
+        }
+<span class="fc" id="L73">        sb.append(']');</span>
+
+<span class="fc" id="L75">        return sb.toString();</span>
+    }
+
+    /**
+     * Returns the StringBuilder that should avoid StringBuffer.expandCapacity.
+     * bufferLength = fileNameLength + messageLength + lengthOfAllSeparators +
+     * + severityNameLength + checkNameLength.
+     * Method is excluded from pitest validation.
+     *
+     * @param event audit event.
+     * @param severityLevelName severity level name.
+     * @return optimal StringBuilder.
+     */
+    private static StringBuilder initStringBuilderWithOptimalBuffer(AuditEvent event,
+            String severityLevelName) {
+<span class="fc" id="L90">        final int bufLen = LENGTH_OF_ALL_SEPARATORS + event.getFileName().length()</span>
+<span class="fc" id="L91">            + event.getMessage().length() + severityLevelName.length()</span>
+<span class="fc" id="L92">            + getCheckShortName(event).length();</span>
+<span class="fc" id="L93">        return new StringBuilder(bufLen);</span>
+    }
+
+    /**
+     * Returns check name without 'Check' suffix.
+     *
+     * @param event audit event.
+     * @return check name without 'Check' suffix.
+     */
+    private static String getCheckShortName(AuditEvent event) {
+<span class="fc" id="L103">        final String checkFullName = event.getSourceName();</span>
+<span class="fc" id="L104">        String checkShortName = checkFullName.substring(checkFullName.lastIndexOf('.') + 1);</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        if (checkShortName.endsWith(SUFFIX)) {</span>
+<span class="fc" id="L106">            final int endIndex = checkShortName.length() - SUFFIX.length();</span>
+<span class="fc" id="L107">            checkShortName = checkShortName.substring(0, endIndex);</span>
+        }
+<span class="fc" id="L109">        return checkShortName;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

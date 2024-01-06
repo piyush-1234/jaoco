@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ParentModuleMacro.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.site</a> &gt; <span class="el_source">ParentModuleMacro.java</span></div><h1>ParentModuleMacro.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.site;
+
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Locale;
+
+import org.apache.maven.doxia.macro.AbstractMacro;
+import org.apache.maven.doxia.macro.Macro;
+import org.apache.maven.doxia.macro.MacroExecutionException;
+import org.apache.maven.doxia.macro.MacroRequest;
+import org.apache.maven.doxia.module.xdoc.XdocSink;
+import org.apache.maven.doxia.sink.Sink;
+import org.codehaus.plexus.component.annotations.Component;
+
+/**
+ * A macro that inserts a link to the parent module.
+ */
+@Component(role = Macro.class, hint = &quot;parent-module&quot;)
+<span class="fc" id="L38">public class ParentModuleMacro extends AbstractMacro {</span>
+    @Override
+    public void execute(Sink sink, MacroRequest request) throws MacroExecutionException {
+        // until https://github.com/checkstyle/checkstyle/issues/13426
+<span class="pc bpc" id="L42" title="1 of 2 branches missed.">        if (!(sink instanceof XdocSink)) {</span>
+<span class="nc" id="L43">            throw new MacroExecutionException(&quot;Expected Sink to be an XdocSink.&quot;);</span>
+        }
+<span class="fc" id="L45">        final String moduleName = (String) request.getParameter(&quot;moduleName&quot;);</span>
+<span class="fc" id="L46">        final Object instance = SiteUtil.getModuleInstance(moduleName);</span>
+<span class="fc" id="L47">        final Class&lt;?&gt; clss = instance.getClass();</span>
+<span class="fc" id="L48">        createParentModuleParagraph((XdocSink) sink, clss, moduleName);</span>
+<span class="fc" id="L49">    }</span>
+
+    /**
+     * Creates a paragraph with a link to the parent module.
+     *
+     * @param sink the sink to write to.
+     * @param clss the class of the module.
+     * @param moduleName the module name.
+     * @throws MacroExecutionException if the parent module cannot be found.
+     */
+    private static void createParentModuleParagraph(XdocSink sink, Class&lt;?&gt; clss, String moduleName)
+            throws MacroExecutionException {
+<span class="fc" id="L61">        final String parentModule = SiteUtil.getParentModule(clss);</span>
+<span class="fc" id="L62">        final String linkToParentModule = getLinkToParentModule(parentModule, moduleName);</span>
+
+<span class="fc" id="L64">        sink.setInsertNewline(false);</span>
+<span class="fc" id="L65">        sink.paragraph();</span>
+<span class="fc" id="L66">        sink.setInsertNewline(true);</span>
+<span class="fc" id="L67">        final String indentLevel10 = SiteUtil.getNewlineAndIndentSpaces(10);</span>
+<span class="fc" id="L68">        sink.rawText(indentLevel10);</span>
+<span class="fc" id="L69">        sink.link(linkToParentModule);</span>
+<span class="fc" id="L70">        sink.text(parentModule);</span>
+<span class="fc" id="L71">        sink.link_();</span>
+<span class="fc" id="L72">        final String indentLevel8 = SiteUtil.getNewlineAndIndentSpaces(8);</span>
+<span class="fc" id="L73">        sink.rawText(indentLevel8);</span>
+<span class="fc" id="L74">        sink.paragraph_();</span>
+<span class="fc" id="L75">    }</span>
+
+    /**
+     * Returns relative link to the parent module for the given module class.
+     *
+     * @param parentModule parent module name.
+     * @param moduleName the module name we are looking for the parent of.
+     * @return relative link to the parent module.
+     * @throws MacroExecutionException if link to the parent module cannot be constructed.
+     */
+    private static String getLinkToParentModule(String parentModule, String moduleName)
+            throws MacroExecutionException {
+<span class="fc" id="L87">        final Path templatePath = SiteUtil.getTemplatePath(moduleName);</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        if (templatePath == null) {</span>
+<span class="nc" id="L89">            throw new MacroExecutionException(</span>
+<span class="nc" id="L90">                    String.format(Locale.ROOT, &quot;Could not find template for %s&quot;, moduleName));</span>
+        }
+<span class="fc" id="L92">        final Path templatePathParent = templatePath.getParent();</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">        if (templatePathParent == null) {</span>
+<span class="nc" id="L94">            throw new MacroExecutionException(&quot;Failed to get parent path for &quot; + templatePath);</span>
+        }
+<span class="fc" id="L96">        return templatePathParent</span>
+<span class="fc" id="L97">                .relativize(Paths.get(&quot;src&quot;, &quot;xdocs&quot;, &quot;config.xml&quot;))</span>
+<span class="fc" id="L98">                .toString()</span>
+<span class="fc" id="L99">                .replace(&quot;.xml&quot;, &quot;.html&quot;)</span>
+<span class="fc" id="L100">                .replace('\\', '/')</span>
+                + &quot;#&quot; + parentModule;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

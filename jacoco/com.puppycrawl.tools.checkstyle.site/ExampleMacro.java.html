@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExampleMacro.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.site</a> &gt; <span class="el_source">ExampleMacro.java</span></div><h1>ExampleMacro.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.site;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Locale;
+import java.util.stream.Collectors;
+
+import org.apache.maven.doxia.macro.AbstractMacro;
+import org.apache.maven.doxia.macro.Macro;
+import org.apache.maven.doxia.macro.MacroExecutionException;
+import org.apache.maven.doxia.macro.MacroRequest;
+import org.apache.maven.doxia.sink.Sink;
+import org.apache.maven.doxia.sink.impl.SinkEventAttributeSet;
+import org.codehaus.plexus.component.annotations.Component;
+
+/**
+ * A macro that inserts a snippet of code or configuration from a file.
+ */
+@Component(role = Macro.class, hint = &quot;example&quot;)
+<span class="fc" id="L43">public class ExampleMacro extends AbstractMacro {</span>
+
+    /** Starting delimiter for config snippets. */
+    private static final String XML_CONFIG_START = &quot;/*xml&quot;;
+
+    /** Ending delimiter for config snippets. */
+    private static final String XML_CONFIG_END = &quot;*/&quot;;
+
+    /** Starting delimiter for code snippets. */
+    private static final String CODE_SNIPPET_START = &quot;// xdoc section -- start&quot;;
+
+    /** Ending delimiter for code snippets. */
+    private static final String CODE_SNIPPET_END = &quot;// xdoc section -- end&quot;;
+
+    /** Newline character. */
+<span class="fc" id="L58">    private static final String NEWLINE = System.lineSeparator();</span>
+
+    /** Eight whitespace characters. All example source tags are indented 8 spaces. */
+    private static final String INDENTATION = &quot;        &quot;;
+
+    /** The path of the last file. */
+<span class="fc" id="L64">    private String lastPath = &quot;&quot;;</span>
+
+    /** The line contents of the last file. */
+<span class="fc" id="L67">    private List&lt;String&gt; lastLines = new ArrayList&lt;&gt;();</span>
+
+    @Override
+    public void execute(Sink sink, MacroRequest request) throws MacroExecutionException {
+<span class="fc" id="L71">        final String path = (String) request.getParameter(&quot;path&quot;);</span>
+<span class="fc" id="L72">        final String type = (String) request.getParameter(&quot;type&quot;);</span>
+
+<span class="fc" id="L74">        List&lt;String&gt; lines = lastLines;</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        if (!path.equals(lastPath)) {</span>
+<span class="fc" id="L76">            lines = readFile(&quot;src/xdocs-examples/&quot; + path);</span>
+<span class="fc" id="L77">            lastPath = path;</span>
+<span class="fc" id="L78">            lastLines = lines;</span>
+        }
+
+<span class="fc bfc" id="L81" title="All 2 branches covered.">        if (&quot;config&quot;.equals(type)) {</span>
+<span class="fc" id="L82">            final String config = getConfigSnippet(lines);</span>
+<span class="fc" id="L83">            writeSnippet(sink, config);</span>
+<span class="fc" id="L84">        }</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">        else if (&quot;code&quot;.equals(type)) {</span>
+<span class="fc" id="L86">            String code = getCodeSnippet(lines);</span>
+            // Replace tabs with spaces for FileTabCharacterCheck examples
+<span class="fc bfc" id="L88" title="All 2 branches covered.">            if (path.contains(&quot;filetabcharacter&quot;)) {</span>
+<span class="fc" id="L89">                code = code.replace(&quot;\t&quot;, &quot;  &quot;);</span>
+            }
+<span class="fc" id="L91">            writeSnippet(sink, code);</span>
+<span class="fc" id="L92">        }</span>
+        else {
+<span class="nc" id="L94">            final String message = String.format(Locale.ROOT, &quot;Unknown example type: %s&quot;, type);</span>
+<span class="nc" id="L95">            throw new MacroExecutionException(message);</span>
+        }
+<span class="fc" id="L97">    }</span>
+
+    /**
+     * Read the file at the given path and returns its contents as a list of lines.
+     *
+     * @param path the path to the file to read.
+     * @return the contents of the file as a list of lines.
+     * @throws MacroExecutionException if the file could not be read.
+     */
+    private static List&lt;String&gt; readFile(String path) throws MacroExecutionException {
+        try {
+<span class="fc" id="L108">            final Path exampleFilePath = Path.of(path);</span>
+<span class="fc" id="L109">            return Files.readAllLines(exampleFilePath);</span>
+        }
+<span class="nc" id="L111">        catch (IOException ioException) {</span>
+<span class="nc" id="L112">            final String message = String.format(Locale.ROOT, &quot;Failed to read %s&quot;, path);</span>
+<span class="nc" id="L113">            throw new MacroExecutionException(message, ioException);</span>
+        }
+    }
+
+    /**
+     * Extract a configuration snippet from the given lines. Config delimiters use the whole
+     * line for themselves and have no indentation. We use equals() instead of contains()
+     * to be more strict because some examples contain those delimiters.
+     *
+     * @param lines the lines to extract the snippet from.
+     * @return the configuration snippet.
+     */
+    private static String getConfigSnippet(Collection&lt;String&gt; lines) {
+<span class="fc" id="L126">        return lines.stream()</span>
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">                .dropWhile(line -&gt; !XML_CONFIG_START.equals(line))</span>
+<span class="fc" id="L128">                .skip(1)</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">                .takeWhile(line -&gt; !XML_CONFIG_END.equals(line))</span>
+<span class="fc" id="L130">                .collect(Collectors.joining(NEWLINE));</span>
+    }
+
+    /**
+     * Extract a code snippet from the given lines. Code delimiters can be indented, so
+     * we use contains() instead of equals().
+     *
+     * @param lines the lines to extract the snippet from.
+     * @return the code snippet.
+     */
+    private static String getCodeSnippet(Collection&lt;String&gt; lines) {
+<span class="fc" id="L141">        return lines.stream()</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">                .dropWhile(line -&gt; !line.contains(CODE_SNIPPET_START))</span>
+<span class="fc" id="L143">                .skip(1)</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">                .takeWhile(line -&gt; !line.contains(CODE_SNIPPET_END))</span>
+<span class="fc" id="L145">                .collect(Collectors.joining(NEWLINE));</span>
+    }
+
+    /**
+     * Write the given snippet to the file inside a source block.
+     *
+     * @param sink the sink to write to.
+     * @param snippet the snippet to write.
+     */
+    private static void writeSnippet(Sink sink, String snippet) {
+<span class="fc" id="L155">        sink.verbatim(SinkEventAttributeSet.BOXED);</span>
+<span class="fc" id="L156">        final String text = NEWLINE</span>
+<span class="fc" id="L157">                + String.join(NEWLINE, snippet.stripTrailing(), INDENTATION);</span>
+<span class="fc" id="L158">        sink.text(text);</span>
+<span class="fc" id="L159">        sink.verbatim_();</span>
+<span class="fc" id="L160">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

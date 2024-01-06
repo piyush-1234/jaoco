@@ -1,0 +1,446 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Violation.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.api</a> &gt; <span class="el_source">Violation.java</span></div><h1>Violation.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.api;
+
+import java.text.MessageFormat;
+import java.util.Arrays;
+import java.util.Locale;
+import java.util.Objects;
+
+import com.puppycrawl.tools.checkstyle.LocalizedMessage;
+import com.puppycrawl.tools.checkstyle.utils.UnmodifiableCollectionUtil;
+
+/**
+ * Represents a violation that can be localised. The translations come from
+ * message.properties files. The underlying implementation uses
+ * java.text.MessageFormat.
+ *
+ * @noinspection ClassWithTooManyConstructors
+ * @noinspectionreason ClassWithTooManyConstructors - immutable nature of class requires a
+ *      bunch of constructors
+ */
+public final class Violation
+    implements Comparable&lt;Violation&gt; {
+
+    /** The default severity level if one is not specified. */
+<span class="fc" id="L43">    private static final SeverityLevel DEFAULT_SEVERITY = SeverityLevel.ERROR;</span>
+
+    /** The line number. **/
+    private final int lineNo;
+    /** The column number. **/
+    private final int columnNo;
+    /** The column char index. **/
+    private final int columnCharIndex;
+    /** The token type constant. See {@link TokenTypes}. **/
+    private final int tokenType;
+
+    /** The severity level. **/
+    private final SeverityLevel severityLevel;
+
+    /** The id of the module generating the violation. */
+    private final String moduleId;
+
+    /** Key for the violation format. **/
+    private final String key;
+
+    /** Arguments for MessageFormat. */
+    private final Object[] args;
+
+    /** Name of the resource bundle to get violations from. **/
+    private final String bundle;
+
+    /** Class of the source for this Violation. */
+    private final Class&lt;?&gt; sourceClass;
+
+    /** A custom violation overriding the default violation from the bundle. */
+    private final String customMessage;
+
+    /**
+     * Creates a new {@code Violation} instance.
+     *
+     * @param lineNo line number associated with the violation
+     * @param columnNo column number associated with the violation
+     * @param columnCharIndex column char index associated with the violation
+     * @param tokenType token type of the event associated with violation. See {@link TokenTypes}
+     * @param bundle resource bundle name
+     * @param key the key to locate the translation
+     * @param args arguments for the translation
+     * @param severityLevel severity level for the violation
+     * @param moduleId the id of the module the violation is associated with
+     * @param sourceClass the Class that is the source of the violation
+     * @param customMessage optional custom violation overriding the default
+     * @noinspection ConstructorWithTooManyParameters
+     * @noinspectionreason ConstructorWithTooManyParameters - immutable class requires a large
+     *      number of arguments
+     */
+    // -@cs[ParameterNumber] Class is immutable, we need that amount of arguments.
+    public Violation(int lineNo,
+                            int columnNo,
+                            int columnCharIndex,
+                            int tokenType,
+                            String bundle,
+                            String key,
+                            Object[] args,
+                            SeverityLevel severityLevel,
+                            String moduleId,
+                            Class&lt;?&gt; sourceClass,
+<span class="fc" id="L104">                            String customMessage) {</span>
+<span class="fc" id="L105">        this.lineNo = lineNo;</span>
+<span class="fc" id="L106">        this.columnNo = columnNo;</span>
+<span class="fc" id="L107">        this.columnCharIndex = columnCharIndex;</span>
+<span class="fc" id="L108">        this.tokenType = tokenType;</span>
+<span class="fc" id="L109">        this.key = key;</span>
+
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (args == null) {</span>
+<span class="fc" id="L112">            this.args = null;</span>
+        }
+        else {
+<span class="fc" id="L115">            this.args = UnmodifiableCollectionUtil.copyOfArray(args, args.length);</span>
+        }
+<span class="fc" id="L117">        this.bundle = bundle;</span>
+<span class="fc" id="L118">        this.severityLevel = severityLevel;</span>
+<span class="fc" id="L119">        this.moduleId = moduleId;</span>
+<span class="fc" id="L120">        this.sourceClass = sourceClass;</span>
+<span class="fc" id="L121">        this.customMessage = customMessage;</span>
+<span class="fc" id="L122">    }</span>
+
+    /**
+     * Creates a new {@code Violation} instance.
+     *
+     * @param lineNo line number associated with the violation
+     * @param columnNo column number associated with the violation
+     * @param tokenType token type of the event associated with violation. See {@link TokenTypes}
+     * @param bundle resource bundle name
+     * @param key the key to locate the translation
+     * @param args arguments for the translation
+     * @param severityLevel severity level for the violation
+     * @param moduleId the id of the module the violation is associated with
+     * @param sourceClass the Class that is the source of the violation
+     * @param customMessage optional custom violation overriding the default
+     * @noinspection ConstructorWithTooManyParameters
+     * @noinspectionreason ConstructorWithTooManyParameters - immutable class requires a large
+     *      number of arguments
+     */
+    // -@cs[ParameterNumber] Class is immutable, we need that amount of arguments.
+    public Violation(int lineNo,
+                            int columnNo,
+                            int tokenType,
+                            String bundle,
+                            String key,
+                            Object[] args,
+                            SeverityLevel severityLevel,
+                            String moduleId,
+                            Class&lt;?&gt; sourceClass,
+                            String customMessage) {
+<span class="fc" id="L152">        this(lineNo, columnNo, columnNo, tokenType, bundle, key, args, severityLevel, moduleId,</span>
+                sourceClass, customMessage);
+<span class="fc" id="L154">    }</span>
+
+    /**
+     * Creates a new {@code Violation} instance.
+     *
+     * @param lineNo line number associated with the violation
+     * @param columnNo column number associated with the violation
+     * @param bundle resource bundle name
+     * @param key the key to locate the translation
+     * @param args arguments for the translation
+     * @param severityLevel severity level for the violation
+     * @param moduleId the id of the module the violation is associated with
+     * @param sourceClass the Class that is the source of the violation
+     * @param customMessage optional custom violation overriding the default
+     * @noinspection ConstructorWithTooManyParameters
+     * @noinspectionreason ConstructorWithTooManyParameters - immutable class requires a large
+     *      number of arguments
+     */
+    // -@cs[ParameterNumber] Class is immutable, we need that amount of arguments.
+    public Violation(int lineNo,
+                            int columnNo,
+                            String bundle,
+                            String key,
+                            Object[] args,
+                            SeverityLevel severityLevel,
+                            String moduleId,
+                            Class&lt;?&gt; sourceClass,
+                            String customMessage) {
+<span class="fc" id="L182">        this(lineNo, columnNo, 0, bundle, key, args, severityLevel, moduleId, sourceClass,</span>
+                customMessage);
+<span class="fc" id="L184">    }</span>
+
+    /**
+     * Creates a new {@code Violation} instance.
+     *
+     * @param lineNo line number associated with the violation
+     * @param columnNo column number associated with the violation
+     * @param bundle resource bundle name
+     * @param key the key to locate the translation
+     * @param args arguments for the translation
+     * @param moduleId the id of the module the violation is associated with
+     * @param sourceClass the Class that is the source of the violation
+     * @param customMessage optional custom violation overriding the default
+     * @noinspection ConstructorWithTooManyParameters
+     * @noinspectionreason ConstructorWithTooManyParameters - immutable class requires a large
+     *      number of arguments
+     */
+    // -@cs[ParameterNumber] Class is immutable, we need that amount of arguments.
+    public Violation(int lineNo,
+                            int columnNo,
+                            String bundle,
+                            String key,
+                            Object[] args,
+                            String moduleId,
+                            Class&lt;?&gt; sourceClass,
+                            String customMessage) {
+<span class="fc" id="L210">        this(lineNo,</span>
+                columnNo,
+             bundle,
+             key,
+             args,
+             DEFAULT_SEVERITY,
+             moduleId,
+             sourceClass,
+             customMessage);
+<span class="fc" id="L219">    }</span>
+
+    /**
+     * Creates a new {@code Violation} instance.
+     *
+     * @param lineNo line number associated with the violation
+     * @param bundle resource bundle name
+     * @param key the key to locate the translation
+     * @param args arguments for the translation
+     * @param severityLevel severity level for the violation
+     * @param moduleId the id of the module the violation is associated with
+     * @param sourceClass the source class for the violation
+     * @param customMessage optional custom violation overriding the default
+     * @noinspection ConstructorWithTooManyParameters
+     * @noinspectionreason ConstructorWithTooManyParameters - immutable class requires a large
+     *      number of arguments
+     */
+    // -@cs[ParameterNumber] Class is immutable, we need that amount of arguments.
+    public Violation(int lineNo,
+                            String bundle,
+                            String key,
+                            Object[] args,
+                            SeverityLevel severityLevel,
+                            String moduleId,
+                            Class&lt;?&gt; sourceClass,
+                            String customMessage) {
+<span class="fc" id="L245">        this(lineNo, 0, bundle, key, args, severityLevel, moduleId,</span>
+                sourceClass, customMessage);
+<span class="fc" id="L247">    }</span>
+
+    /**
+     * Creates a new {@code Violation} instance. The column number
+     * defaults to 0.
+     *
+     * @param lineNo line number associated with the violation
+     * @param bundle name of a resource bundle that contains audit event violations
+     * @param key the key to locate the translation
+     * @param args arguments for the translation
+     * @param moduleId the id of the module the violation is associated with
+     * @param sourceClass the name of the source for the violation
+     * @param customMessage optional custom violation overriding the default
+     */
+    public Violation(
+        int lineNo,
+        String bundle,
+        String key,
+        Object[] args,
+        String moduleId,
+        Class&lt;?&gt; sourceClass,
+        String customMessage) {
+<span class="fc" id="L269">        this(lineNo, 0, bundle, key, args, DEFAULT_SEVERITY, moduleId,</span>
+                sourceClass, customMessage);
+<span class="fc" id="L271">    }</span>
+
+    /**
+     * Gets the line number.
+     *
+     * @return the line number
+     */
+    public int getLineNo() {
+<span class="fc" id="L279">        return lineNo;</span>
+    }
+
+    /**
+     * Gets the column number.
+     *
+     * @return the column number
+     */
+    public int getColumnNo() {
+<span class="fc" id="L288">        return columnNo;</span>
+    }
+
+    /**
+     * Gets the column char index.
+     *
+     * @return the column char index
+     */
+    public int getColumnCharIndex() {
+<span class="fc" id="L297">        return columnCharIndex;</span>
+    }
+
+    /**
+     * Gets the token type.
+     *
+     * @return the token type
+     */
+    public int getTokenType() {
+<span class="fc" id="L306">        return tokenType;</span>
+    }
+
+    /**
+     * Gets the severity level.
+     *
+     * @return the severity level
+     */
+    public SeverityLevel getSeverityLevel() {
+<span class="fc" id="L315">        return severityLevel;</span>
+    }
+
+    /**
+     * Returns id of module.
+     *
+     * @return the module identifier.
+     */
+    public String getModuleId() {
+<span class="fc" id="L324">        return moduleId;</span>
+    }
+
+    /**
+     * Returns the violation key to locate the translation, can also be used
+     * in IDE plugins to map audit event violations to corrective actions.
+     *
+     * @return the violation key
+     */
+    public String getKey() {
+<span class="fc" id="L334">        return key;</span>
+    }
+
+    /**
+     * Gets the name of the source for this Violation.
+     *
+     * @return the name of the source for this Violation
+     */
+    public String getSourceName() {
+<span class="fc" id="L343">        return sourceClass.getName();</span>
+    }
+
+    /**
+     * Indicates whether some other object is &quot;equal to&quot; this one.
+     * Suppression on enumeration is needed so code stays consistent.
+     *
+     * @noinspection EqualsCalledOnEnumConstant
+     * @noinspectionreason EqualsCalledOnEnumConstant - enumeration is needed to keep
+     *      code consistent
+     */
+    // -@cs[CyclomaticComplexity] equals - a lot of fields to check.
+    @Override
+    public boolean equals(Object object) {
+<span class="fc bfc" id="L357" title="All 2 branches covered.">        if (this == object) {</span>
+<span class="fc" id="L358">            return true;</span>
+        }
+<span class="fc bfc" id="L360" title="All 4 branches covered.">        if (object == null || getClass() != object.getClass()) {</span>
+<span class="fc" id="L361">            return false;</span>
+        }
+<span class="fc" id="L363">        final Violation violation = (Violation) object;</span>
+<span class="fc bfc" id="L364" title="All 2 branches covered.">        return Objects.equals(lineNo, violation.lineNo)</span>
+<span class="fc bfc" id="L365" title="All 2 branches covered.">                &amp;&amp; Objects.equals(columnNo, violation.columnNo)</span>
+<span class="fc bfc" id="L366" title="All 2 branches covered.">                &amp;&amp; Objects.equals(columnCharIndex, violation.columnCharIndex)</span>
+<span class="fc bfc" id="L367" title="All 2 branches covered.">                &amp;&amp; Objects.equals(tokenType, violation.tokenType)</span>
+<span class="fc bfc" id="L368" title="All 2 branches covered.">                &amp;&amp; Objects.equals(severityLevel, violation.severityLevel)</span>
+<span class="fc bfc" id="L369" title="All 2 branches covered.">                &amp;&amp; Objects.equals(moduleId, violation.moduleId)</span>
+<span class="fc bfc" id="L370" title="All 2 branches covered.">                &amp;&amp; Objects.equals(key, violation.key)</span>
+<span class="fc bfc" id="L371" title="All 2 branches covered.">                &amp;&amp; Objects.equals(bundle, violation.bundle)</span>
+<span class="fc bfc" id="L372" title="All 2 branches covered.">                &amp;&amp; Objects.equals(sourceClass, violation.sourceClass)</span>
+<span class="fc bfc" id="L373" title="All 2 branches covered.">                &amp;&amp; Objects.equals(customMessage, violation.customMessage)</span>
+<span class="fc bfc" id="L374" title="All 2 branches covered.">                &amp;&amp; Arrays.equals(args, violation.args);</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="fc" id="L379">        return Objects.hash(lineNo, columnNo, columnCharIndex, tokenType, severityLevel, moduleId,</span>
+<span class="fc" id="L380">                key, bundle, sourceClass, customMessage, Arrays.hashCode(args));</span>
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Interface Comparable methods
+    ////////////////////////////////////////////////////////////////////////////
+
+    @Override
+    public int compareTo(Violation other) {
+        final int result;
+
+<span class="fc bfc" id="L391" title="All 2 branches covered.">        if (lineNo == other.lineNo) {</span>
+<span class="fc bfc" id="L392" title="All 2 branches covered.">            if (columnNo == other.columnNo) {</span>
+<span class="fc bfc" id="L393" title="All 2 branches covered.">                if (Objects.equals(moduleId, other.moduleId)) {</span>
+<span class="fc bfc" id="L394" title="All 2 branches covered.">                    if (Objects.equals(sourceClass, other.sourceClass)) {</span>
+<span class="fc" id="L395">                        result = getViolation().compareTo(other.getViolation());</span>
+                    }
+<span class="fc bfc" id="L397" title="All 2 branches covered.">                    else if (sourceClass == null) {</span>
+<span class="fc" id="L398">                        result = -1;</span>
+                    }
+<span class="fc bfc" id="L400" title="All 2 branches covered.">                    else if (other.sourceClass == null) {</span>
+<span class="fc" id="L401">                        result = 1;</span>
+                    }
+                    else {
+<span class="fc" id="L404">                        result = sourceClass.getName().compareTo(other.sourceClass.getName());</span>
+                    }
+                }
+<span class="fc bfc" id="L407" title="All 2 branches covered.">                else if (moduleId == null) {</span>
+<span class="fc" id="L408">                    result = -1;</span>
+                }
+<span class="fc bfc" id="L410" title="All 2 branches covered.">                else if (other.moduleId == null) {</span>
+<span class="fc" id="L411">                    result = 1;</span>
+                }
+                else {
+<span class="fc" id="L414">                    result = moduleId.compareTo(other.moduleId);</span>
+                }
+            }
+            else {
+<span class="fc" id="L418">                result = Integer.compare(columnNo, other.columnNo);</span>
+            }
+        }
+        else {
+<span class="fc" id="L422">            result = Integer.compare(lineNo, other.lineNo);</span>
+        }
+<span class="fc" id="L424">        return result;</span>
+    }
+
+    /**
+     * Gets the translated violation.
+     *
+     * @return the translated violation
+     */
+    public String getViolation() {
+        final String violation;
+
+<span class="fc bfc" id="L435" title="All 2 branches covered.">        if (customMessage != null) {</span>
+<span class="fc" id="L436">            violation = new MessageFormat(customMessage, Locale.ROOT).format(args);</span>
+        }
+        else {
+<span class="fc" id="L439">            violation = new LocalizedMessage(bundle, sourceClass, key, args).getMessage();</span>
+        }
+
+<span class="fc" id="L442">        return violation;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

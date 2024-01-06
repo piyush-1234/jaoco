@@ -1,0 +1,422 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FallThroughCheck.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.checks.coding</a> &gt; <span class="el_source">FallThroughCheck.java</span></div><h1>FallThroughCheck.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.checks.coding;
+
+import java.util.Optional;
+import java.util.regex.Pattern;
+
+import com.puppycrawl.tools.checkstyle.StatelessCheck;
+import com.puppycrawl.tools.checkstyle.api.AbstractCheck;
+import com.puppycrawl.tools.checkstyle.api.DetailAST;
+import com.puppycrawl.tools.checkstyle.api.TokenTypes;
+import com.puppycrawl.tools.checkstyle.utils.TokenUtil;
+
+/**
+ * &lt;p&gt;
+ * Checks for fall-through in {@code switch} statements.
+ * Finds locations where a {@code case} &lt;b&gt;contains&lt;/b&gt; Java code but lacks a
+ * {@code break}, {@code return}, {@code yield}, {@code throw} or {@code continue} statement.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The check honors special comments to suppress the warning.
+ * By default, the texts
+ * &quot;fallthru&quot;, &quot;fall thru&quot;, &quot;fall-thru&quot;,
+ * &quot;fallthrough&quot;, &quot;fall through&quot;, &quot;fall-through&quot;
+ * &quot;fallsthrough&quot;, &quot;falls through&quot;, &quot;falls-through&quot; (case-sensitive).
+ * The comment containing these words must be all on one line,
+ * and must be on the last non-empty line before the {@code case} triggering
+ * the warning or on the same line before the {@code case}(ugly, but possible).
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Note: The check assumes that there is no unreachable code in the {@code case}.
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * Property {@code checkLastCaseGroup} - Control whether the last case group must be checked.
+ * Type is {@code boolean}.
+ * Default value is {@code false}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code reliefPattern} - Define the RegExp to match the relief comment that suppresses
+ * the warning about a fall through.
+ * Type is {@code java.util.regex.Pattern}.
+ * Default value is {@code &quot;falls?[ -]?thr(u|ough)&quot;}.
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Parent is {@code com.puppycrawl.tools.checkstyle.TreeWalker}
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Violation Message Keys:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * {@code fall.through}
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * {@code fall.through.last}
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * @since 3.4
+ */
+@StatelessCheck
+<span class="fc" id="L81">public class FallThroughCheck extends AbstractCheck {</span>
+
+    /**
+     * A key is pointing to the warning message text in &quot;messages.properties&quot;
+     * file.
+     */
+    public static final String MSG_FALL_THROUGH = &quot;fall.through&quot;;
+
+    /**
+     * A key is pointing to the warning message text in &quot;messages.properties&quot;
+     * file.
+     */
+    public static final String MSG_FALL_THROUGH_LAST = &quot;fall.through.last&quot;;
+
+    /** Control whether the last case group must be checked. */
+    private boolean checkLastCaseGroup;
+
+    /**
+     * Define the RegExp to match the relief comment that suppresses
+     * the warning about a fall through.
+     */
+<span class="fc" id="L102">    private Pattern reliefPattern = Pattern.compile(&quot;falls?[ -]?thr(u|ough)&quot;);</span>
+
+    @Override
+    public int[] getDefaultTokens() {
+<span class="fc" id="L106">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getRequiredTokens() {
+<span class="fc" id="L111">        return new int[] {TokenTypes.CASE_GROUP};</span>
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+<span class="fc" id="L116">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public boolean isCommentNodesRequired() {
+<span class="fc" id="L121">        return true;</span>
+    }
+
+    /**
+     * Setter to define the RegExp to match the relief comment that suppresses
+     * the warning about a fall through.
+     *
+     * @param pattern
+     *            The regular expression pattern.
+     * @since 4.0
+     */
+    public void setReliefPattern(Pattern pattern) {
+<span class="fc" id="L133">        reliefPattern = pattern;</span>
+<span class="fc" id="L134">    }</span>
+
+    /**
+     * Setter to control whether the last case group must be checked.
+     *
+     * @param value new value of the property.
+     * @since 4.0
+     */
+    public void setCheckLastCaseGroup(boolean value) {
+<span class="fc" id="L143">        checkLastCaseGroup = value;</span>
+<span class="fc" id="L144">    }</span>
+
+    @Override
+    public void visitToken(DetailAST ast) {
+<span class="fc" id="L148">        final DetailAST nextGroup = ast.getNextSibling();</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        final boolean isLastGroup = nextGroup.getType() != TokenTypes.CASE_GROUP;</span>
+<span class="fc bfc" id="L150" title="All 4 branches covered.">        if (!isLastGroup || checkLastCaseGroup) {</span>
+<span class="fc" id="L151">            final DetailAST slist = ast.findFirstToken(TokenTypes.SLIST);</span>
+
+<span class="fc bfc" id="L153" title="All 4 branches covered.">            if (slist != null &amp;&amp; !isTerminated(slist, true, true)</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">                &amp;&amp; !hasFallThroughComment(ast)) {</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">                if (isLastGroup) {</span>
+<span class="fc" id="L156">                    log(ast, MSG_FALL_THROUGH_LAST);</span>
+                }
+                else {
+<span class="fc" id="L159">                    log(nextGroup, MSG_FALL_THROUGH);</span>
+                }
+            }
+        }
+<span class="fc" id="L163">    }</span>
+
+    /**
+     * Checks if a given subtree terminated by return, throw or,
+     * if allowed break, continue.
+     *
+     * @param ast root of given subtree
+     * @param useBreak should we consider break as terminator
+     * @param useContinue should we consider continue as terminator
+     * @return true if the subtree is terminated.
+     */
+    private boolean isTerminated(final DetailAST ast, boolean useBreak,
+                                 boolean useContinue) {
+        final boolean terminated;
+
+<span class="fc bfc" id="L178" title="All 10 branches covered.">        switch (ast.getType()) {</span>
+            case TokenTypes.LITERAL_RETURN:
+            case TokenTypes.LITERAL_YIELD:
+            case TokenTypes.LITERAL_THROW:
+<span class="fc" id="L182">                terminated = true;</span>
+<span class="fc" id="L183">                break;</span>
+            case TokenTypes.LITERAL_BREAK:
+<span class="fc" id="L185">                terminated = useBreak;</span>
+<span class="fc" id="L186">                break;</span>
+            case TokenTypes.LITERAL_CONTINUE:
+<span class="fc" id="L188">                terminated = useContinue;</span>
+<span class="fc" id="L189">                break;</span>
+            case TokenTypes.SLIST:
+<span class="fc" id="L191">                terminated = checkSlist(ast, useBreak, useContinue);</span>
+<span class="fc" id="L192">                break;</span>
+            case TokenTypes.LITERAL_IF:
+<span class="fc" id="L194">                terminated = checkIf(ast, useBreak, useContinue);</span>
+<span class="fc" id="L195">                break;</span>
+            case TokenTypes.LITERAL_FOR:
+            case TokenTypes.LITERAL_WHILE:
+            case TokenTypes.LITERAL_DO:
+<span class="fc" id="L199">                terminated = checkLoop(ast);</span>
+<span class="fc" id="L200">                break;</span>
+            case TokenTypes.LITERAL_TRY:
+<span class="fc" id="L202">                terminated = checkTry(ast, useBreak, useContinue);</span>
+<span class="fc" id="L203">                break;</span>
+            case TokenTypes.LITERAL_SWITCH:
+<span class="fc" id="L205">                terminated = checkSwitch(ast, useContinue);</span>
+<span class="fc" id="L206">                break;</span>
+            case TokenTypes.LITERAL_SYNCHRONIZED:
+<span class="fc" id="L208">                terminated = checkSynchronized(ast, useBreak, useContinue);</span>
+<span class="fc" id="L209">                break;</span>
+            default:
+<span class="fc" id="L211">                terminated = false;</span>
+        }
+<span class="fc" id="L213">        return terminated;</span>
+    }
+
+    /**
+     * Checks if a given SLIST terminated by return, throw or,
+     * if allowed break, continue.
+     *
+     * @param slistAst SLIST to check
+     * @param useBreak should we consider break as terminator
+     * @param useContinue should we consider continue as terminator
+     * @return true if SLIST is terminated.
+     */
+    private boolean checkSlist(final DetailAST slistAst, boolean useBreak,
+                               boolean useContinue) {
+<span class="fc" id="L227">        DetailAST lastStmt = slistAst.getLastChild();</span>
+
+<span class="fc bfc" id="L229" title="All 2 branches covered.">        if (lastStmt.getType() == TokenTypes.RCURLY) {</span>
+<span class="fc" id="L230">            lastStmt = lastStmt.getPreviousSibling();</span>
+        }
+
+<span class="fc bfc" id="L233" title="All 2 branches covered.">        while (TokenUtil.isOfType(lastStmt, TokenTypes.SINGLE_LINE_COMMENT,</span>
+                TokenTypes.BLOCK_COMMENT_BEGIN)) {
+<span class="fc" id="L235">            lastStmt = lastStmt.getPreviousSibling();</span>
+        }
+
+<span class="fc bfc" id="L238" title="All 2 branches covered.">        return lastStmt != null</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">            &amp;&amp; isTerminated(lastStmt, useBreak, useContinue);</span>
+    }
+
+    /**
+     * Checks if a given IF terminated by return, throw or,
+     * if allowed break, continue.
+     *
+     * @param ast IF to check
+     * @param useBreak should we consider break as terminator
+     * @param useContinue should we consider continue as terminator
+     * @return true if IF is terminated.
+     */
+    private boolean checkIf(final DetailAST ast, boolean useBreak,
+                            boolean useContinue) {
+<span class="fc" id="L253">        final DetailAST thenStmt = getNextNonCommentAst(ast.findFirstToken(TokenTypes.RPAREN));</span>
+
+<span class="fc" id="L255">        final DetailAST elseStmt = getNextNonCommentAst(thenStmt);</span>
+
+<span class="fc bfc" id="L257" title="All 2 branches covered.">        return elseStmt != null</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">                &amp;&amp; isTerminated(thenStmt, useBreak, useContinue)</span>
+<span class="fc bfc" id="L259" title="All 2 branches covered.">                &amp;&amp; isTerminated(elseStmt.getLastChild(), useBreak, useContinue);</span>
+    }
+
+    /**
+     * This method will skip the comment content while finding the next ast of current ast.
+     *
+     * @param ast current ast
+     * @return next ast after skipping comment
+     */
+    private static DetailAST getNextNonCommentAst(DetailAST ast) {
+<span class="fc" id="L269">        DetailAST nextSibling = ast.getNextSibling();</span>
+<span class="fc bfc" id="L270" title="All 2 branches covered.">        while (TokenUtil.isOfType(nextSibling, TokenTypes.SINGLE_LINE_COMMENT,</span>
+                TokenTypes.BLOCK_COMMENT_BEGIN)) {
+<span class="fc" id="L272">            nextSibling = nextSibling.getNextSibling();</span>
+        }
+<span class="fc" id="L274">        return nextSibling;</span>
+    }
+
+    /**
+     * Checks if a given loop terminated by return, throw or,
+     * if allowed break, continue.
+     *
+     * @param ast loop to check
+     * @return true if loop is terminated.
+     */
+    private boolean checkLoop(final DetailAST ast) {
+        final DetailAST loopBody;
+<span class="fc bfc" id="L286" title="All 2 branches covered.">        if (ast.getType() == TokenTypes.LITERAL_DO) {</span>
+<span class="fc" id="L287">            final DetailAST lparen = ast.findFirstToken(TokenTypes.DO_WHILE);</span>
+<span class="fc" id="L288">            loopBody = lparen.getPreviousSibling();</span>
+<span class="fc" id="L289">        }</span>
+        else {
+<span class="fc" id="L291">            final DetailAST rparen = ast.findFirstToken(TokenTypes.RPAREN);</span>
+<span class="fc" id="L292">            loopBody = rparen.getNextSibling();</span>
+        }
+<span class="fc" id="L294">        return isTerminated(loopBody, false, false);</span>
+    }
+
+    /**
+     * Checks if a given try/catch/finally block terminated by return, throw or,
+     * if allowed break, continue.
+     *
+     * @param ast loop to check
+     * @param useBreak should we consider break as terminator
+     * @param useContinue should we consider continue as terminator
+     * @return true if try/catch/finally block is terminated
+     */
+    private boolean checkTry(final DetailAST ast, boolean useBreak,
+                             boolean useContinue) {
+<span class="fc" id="L308">        final DetailAST finalStmt = ast.getLastChild();</span>
+<span class="fc bfc" id="L309" title="All 2 branches covered.">        boolean isTerminated = finalStmt.getType() == TokenTypes.LITERAL_FINALLY</span>
+<span class="fc bfc" id="L310" title="All 2 branches covered.">                &amp;&amp; isTerminated(finalStmt.findFirstToken(TokenTypes.SLIST), useBreak, useContinue);</span>
+
+<span class="fc bfc" id="L312" title="All 2 branches covered.">        if (!isTerminated) {</span>
+<span class="fc" id="L313">            DetailAST firstChild = ast.getFirstChild();</span>
+
+<span class="fc bfc" id="L315" title="All 2 branches covered.">            if (firstChild.getType() == TokenTypes.RESOURCE_SPECIFICATION) {</span>
+<span class="fc" id="L316">                firstChild = firstChild.getNextSibling();</span>
+            }
+
+<span class="fc" id="L319">            isTerminated = isTerminated(firstChild,</span>
+                    useBreak, useContinue);
+
+<span class="fc" id="L322">            DetailAST catchStmt = ast.findFirstToken(TokenTypes.LITERAL_CATCH);</span>
+<span class="fc bfc" id="L323" title="All 4 branches covered.">            while (catchStmt != null</span>
+                    &amp;&amp; isTerminated
+<span class="fc bfc" id="L325" title="All 2 branches covered.">                    &amp;&amp; catchStmt.getType() == TokenTypes.LITERAL_CATCH) {</span>
+<span class="fc" id="L326">                final DetailAST catchBody =</span>
+<span class="fc" id="L327">                        catchStmt.findFirstToken(TokenTypes.SLIST);</span>
+<span class="fc" id="L328">                isTerminated = isTerminated(catchBody, useBreak, useContinue);</span>
+<span class="fc" id="L329">                catchStmt = catchStmt.getNextSibling();</span>
+<span class="fc" id="L330">            }</span>
+        }
+<span class="fc" id="L332">        return isTerminated;</span>
+    }
+
+    /**
+     * Checks if a given switch terminated by return, throw or,
+     * if allowed break, continue.
+     *
+     * @param literalSwitchAst loop to check
+     * @param useContinue should we consider continue as terminator
+     * @return true if switch is terminated
+     */
+    private boolean checkSwitch(final DetailAST literalSwitchAst, boolean useContinue) {
+<span class="fc" id="L344">        DetailAST caseGroup = literalSwitchAst.findFirstToken(TokenTypes.CASE_GROUP);</span>
+<span class="fc bfc" id="L345" title="All 2 branches covered.">        boolean isTerminated = caseGroup != null;</span>
+<span class="fc bfc" id="L346" title="All 4 branches covered.">        while (isTerminated &amp;&amp; caseGroup.getType() != TokenTypes.RCURLY) {</span>
+<span class="fc" id="L347">            final DetailAST caseBody =</span>
+<span class="fc" id="L348">                caseGroup.findFirstToken(TokenTypes.SLIST);</span>
+<span class="fc bfc" id="L349" title="All 4 branches covered.">            isTerminated = caseBody != null &amp;&amp; isTerminated(caseBody, false, useContinue);</span>
+<span class="fc" id="L350">            caseGroup = caseGroup.getNextSibling();</span>
+<span class="fc" id="L351">        }</span>
+<span class="fc" id="L352">        return isTerminated;</span>
+    }
+
+    /**
+     * Checks if a given synchronized block terminated by return, throw or,
+     * if allowed break, continue.
+     *
+     * @param synchronizedAst synchronized block to check.
+     * @param useBreak should we consider break as terminator
+     * @param useContinue should we consider continue as terminator
+     * @return true if synchronized block is terminated
+     */
+    private boolean checkSynchronized(final DetailAST synchronizedAst, boolean useBreak,
+                                      boolean useContinue) {
+<span class="fc" id="L366">        return isTerminated(</span>
+<span class="fc" id="L367">            synchronizedAst.findFirstToken(TokenTypes.SLIST), useBreak, useContinue);</span>
+    }
+
+    /**
+     * Determines if the fall through case between {@code currentCase} and
+     * {@code nextCase} is relieved by an appropriate comment.
+     *
+     * &lt;p&gt;Handles&lt;/p&gt;
+     * &lt;pre&gt;
+     * case 1:
+     * /&amp;#42; FALLTHRU &amp;#42;/ case 2:
+     *
+     * switch(i) {
+     * default:
+     * /&amp;#42; FALLTHRU &amp;#42;/}
+     *
+     * case 1:
+     * // FALLTHRU
+     * case 2:
+     *
+     * switch(i) {
+     * default:
+     * // FALLTHRU
+     * &lt;/pre&gt;
+     *
+     * @param currentCase AST of the case that falls through to the next case.
+     * @return True if a relief comment was found
+     */
+    private boolean hasFallThroughComment(DetailAST currentCase) {
+<span class="fc" id="L396">        final DetailAST nextSibling = currentCase.getNextSibling();</span>
+        final DetailAST ast;
+<span class="fc bfc" id="L398" title="All 2 branches covered.">        if (nextSibling.getType() == TokenTypes.CASE_GROUP) {</span>
+<span class="fc" id="L399">            ast = nextSibling.getFirstChild();</span>
+        }
+        else {
+<span class="fc" id="L402">            ast = currentCase;</span>
+        }
+<span class="fc" id="L404">        return hasReliefComment(ast);</span>
+    }
+
+    /**
+     * Check if there is any fall through comment.
+     *
+     * @param ast ast to check
+     * @return true if relief comment found
+     */
+    private boolean hasReliefComment(DetailAST ast) {
+<span class="fc" id="L414">        return Optional.ofNullable(getNextNonCommentAst(ast))</span>
+<span class="fc" id="L415">                .map(DetailAST::getPreviousSibling)</span>
+<span class="fc" id="L416">                .map(previous -&gt; previous.getFirstChild().getText())</span>
+<span class="fc" id="L417">                .map(text -&gt; reliefPattern.matcher(text).find())</span>
+<span class="fc" id="L418">                .orElse(Boolean.FALSE);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>
