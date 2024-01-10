@@ -1,0 +1,780 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ImportOrderCheck.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.checks.imports</a> &gt; <span class="el_source">ImportOrderCheck.java</span></div><h1>ImportOrderCheck.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.checks.imports;
+
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import com.puppycrawl.tools.checkstyle.FileStatefulCheck;
+import com.puppycrawl.tools.checkstyle.api.AbstractCheck;
+import com.puppycrawl.tools.checkstyle.api.DetailAST;
+import com.puppycrawl.tools.checkstyle.api.FullIdent;
+import com.puppycrawl.tools.checkstyle.api.TokenTypes;
+
+/**
+ * &lt;p&gt;
+ * Checks the ordering/grouping of imports. Features are:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * groups type/static imports: ensures that groups of imports come in a specific order
+ * (e.g., java. comes first, javax. comes second, then everything else)
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * adds a separation between type import groups : ensures that a blank line sit between each group
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * type/static import groups aren't separated internally: ensures that each group aren't separated
+ * internally by blank line or comment
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * sorts type/static imports inside each group: ensures that imports within each group are in
+ * lexicographic order
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * sorts according to case: ensures that the comparison between imports is case-sensitive, in
+ * &lt;a href=&quot;https://en.wikipedia.org/wiki/ASCII#Order&quot;&gt;ASCII sort order&lt;/a&gt;
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * arrange static imports: ensures the relative order between type imports and static imports
+ * (see
+ * &lt;a href=&quot;https://checkstyle.org/property_types.html#ImportOrderOption&quot;&gt;ImportOrderOption&lt;/a&gt;)
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * Property {@code caseSensitive} - Control whether string comparison should be
+ * case-sensitive or not. Case-sensitive sorting is in
+ * &lt;a href=&quot;https://en.wikipedia.org/wiki/ASCII#Order&quot;&gt;ASCII sort order&lt;/a&gt;.
+ * It affects both type imports and static imports.
+ * Type is {@code boolean}.
+ * Default value is {@code true}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code groups} - Specify list of &lt;b&gt;type import&lt;/b&gt; groups. Every group identified
+ * either by a common prefix string, or by a regular expression enclosed in forward slashes
+ * (e.g. {@code /regexp/}). All type imports, which does not match any group, falls into an
+ * additional group, located at the end.
+ * Thus, the empty list of type groups (the default value) means one group for all type imports.
+ * Type is {@code java.util.regex.Pattern[]}.
+ * Default value is {@code &quot;&quot;}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code option} - Specify policy on the relative order between type imports and static
+ * imports.
+ * Type is {@code com.puppycrawl.tools.checkstyle.checks.imports.ImportOrderOption}.
+ * Default value is {@code under}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code ordered} - Control whether type imports within each group should be
+ * sorted.
+ * It doesn't affect sorting for static imports.
+ * Type is {@code boolean}.
+ * Default value is {@code true}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code separated} - Control whether type import groups should be separated
+ * by, at least, one blank line or comment and aren't separated internally.
+ * It doesn't affect separations for static imports.
+ * Type is {@code boolean}.
+ * Default value is {@code false}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code separatedStaticGroups} - Control whether static import groups should
+ * be separated by, at least, one blank line or comment and aren't separated internally.
+ * This property has effect only when the property {@code option} is set to {@code top}
+ * or {@code bottom} and when property {@code staticGroups} is enabled.
+ * Type is {@code boolean}.
+ * Default value is {@code false}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code sortStaticImportsAlphabetically} - Control whether
+ * &lt;b&gt;static imports&lt;/b&gt; located at &lt;b&gt;top&lt;/b&gt; or &lt;b&gt;bottom&lt;/b&gt; are sorted within the group.
+ * Type is {@code boolean}.
+ * Default value is {@code false}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code staticGroups} - Specify list of &lt;b&gt;static&lt;/b&gt; import groups. Every group
+ * identified either by a common prefix string, or by a regular expression enclosed in forward
+ * slashes (e.g. {@code /regexp/}). All static imports, which does not match any group, fall into
+ * an additional group, located at the end. Thus, the empty list of static groups (the default
+ * value) means one group for all static imports. This property has effect only when the property
+ * {@code option} is set to {@code top} or {@code bottom}.
+ * Type is {@code java.util.regex.Pattern[]}.
+ * Default value is {@code &quot;&quot;}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code useContainerOrderingForStatic} - Control whether to use container
+ * ordering (Eclipse IDE term) for static imports or not.
+ * Type is {@code boolean}.
+ * Default value is {@code false}.
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Parent is {@code com.puppycrawl.tools.checkstyle.TreeWalker}
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Violation Message Keys:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * {@code import.groups.separated.internally}
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * {@code import.ordering}
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * {@code import.separation}
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * @since 3.2
+ */
+@FileStatefulCheck
+<span class="fc" id="L152">public class ImportOrderCheck</span>
+    extends AbstractCheck {
+
+    /**
+     * A key is pointing to the warning message text in &quot;messages.properties&quot;
+     * file.
+     */
+    public static final String MSG_SEPARATION = &quot;import.separation&quot;;
+
+    /**
+     * A key is pointing to the warning message text in &quot;messages.properties&quot;
+     * file.
+     */
+    public static final String MSG_ORDERING = &quot;import.ordering&quot;;
+
+    /**
+     * A key is pointing to the warning message text in &quot;messages.properties&quot;
+     * file.
+     */
+    public static final String MSG_SEPARATED_IN_GROUP = &quot;import.groups.separated.internally&quot;;
+
+    /** The special wildcard that catches all remaining groups. */
+    private static final String WILDCARD_GROUP_NAME = &quot;*&quot;;
+
+    /** The Forward slash. */
+    private static final String FORWARD_SLASH = &quot;/&quot;;
+
+    /** Empty array of pattern type needed to initialize check. */
+<span class="fc" id="L180">    private static final Pattern[] EMPTY_PATTERN_ARRAY = new Pattern[0];</span>
+
+    /**
+     * Specify list of &lt;b&gt;type import&lt;/b&gt; groups. Every group identified either by a common prefix
+     * string, or by a regular expression enclosed in forward slashes (e.g. {@code /regexp/}).
+     * All type imports, which does not match any group, falls into an additional group,
+     * located at the end. Thus, the empty list of type groups (the default value) means one group
+     * for all type imports.
+     */
+<span class="fc" id="L189">    private Pattern[] groups = EMPTY_PATTERN_ARRAY;</span>
+
+    /**
+     * Specify list of &lt;b&gt;static&lt;/b&gt; import groups. Every group identified either by a common prefix
+     * string, or by a regular expression enclosed in forward slashes (e.g. {@code /regexp/}).
+     * All static imports, which does not match any group, fall into an additional group, located
+     * at the end. Thus, the empty list of static groups (the default value) means one group for all
+     * static imports. This property has effect only when the property {@code option} is set to
+     * {@code top} or {@code bottom}.
+     */
+<span class="fc" id="L199">    private Pattern[] staticGroups = EMPTY_PATTERN_ARRAY;</span>
+
+    /**
+     * Control whether type import groups should be separated by, at least, one blank
+     * line or comment and aren't separated internally. It doesn't affect separations for static
+     * imports.
+     */
+    private boolean separated;
+
+    /**
+     * Control whether static import groups should be separated by, at least, one blank
+     * line or comment and aren't separated internally. This property has effect only when the
+     * property {@code option} is set to {@code top} or {@code bottom} and when property
+     * {@code staticGroups} is enabled.
+     */
+    private boolean separatedStaticGroups;
+
+    /**
+     * Control whether type imports within each group should be sorted.
+     * It doesn't affect sorting for static imports.
+     */
+<span class="fc" id="L220">    private boolean ordered = true;</span>
+
+    /**
+     * Control whether string comparison should be case-sensitive or not. Case-sensitive
+     * sorting is in &lt;a href=&quot;https://en.wikipedia.org/wiki/ASCII#Order&quot;&gt;ASCII sort order&lt;/a&gt;.
+     * It affects both type imports and static imports.
+     */
+<span class="fc" id="L227">    private boolean caseSensitive = true;</span>
+
+    /** Last imported group. */
+    private int lastGroup;
+    /** Line number of last import. */
+    private int lastImportLine;
+    /** Name of last import. */
+    private String lastImport;
+    /** If last import was static. */
+    private boolean lastImportStatic;
+    /** Whether there were any imports. */
+    private boolean beforeFirstImport;
+    /**
+     * Whether static and type import groups should be split apart.
+     * When the {@code option} property is set to {@code INFLOW}, {@code ABOVE} or {@code UNDER},
+     * both the type and static imports use the properties {@code groups} and {@code separated}.
+     * When the {@code option} property is set to {@code TOP} or {@code BOTTOM}, static imports
+     * uses the properties {@code staticGroups} and {@code separatedStaticGroups}.
+     **/
+    private boolean staticImportsApart;
+
+    /**
+     * Control whether &lt;b&gt;static imports&lt;/b&gt; located at &lt;b&gt;top&lt;/b&gt; or &lt;b&gt;bottom&lt;/b&gt; are
+     * sorted within the group.
+     */
+    private boolean sortStaticImportsAlphabetically;
+
+    /**
+     * Control whether to use container ordering (Eclipse IDE term) for static imports
+     * or not.
+     */
+    private boolean useContainerOrderingForStatic;
+
+    /**
+     * Specify policy on the relative order between type imports and static imports.
+     */
+<span class="fc" id="L263">    private ImportOrderOption option = ImportOrderOption.UNDER;</span>
+
+    /**
+     * Setter to specify policy on the relative order between type imports and static imports.
+     *
+     * @param optionStr string to decode option from
+     * @throws IllegalArgumentException if unable to decode
+     * @since 5.0
+     */
+    public void setOption(String optionStr) {
+<span class="fc" id="L273">        option = ImportOrderOption.valueOf(optionStr.trim().toUpperCase(Locale.ENGLISH));</span>
+<span class="fc" id="L274">    }</span>
+
+    /**
+     * Setter to specify list of &lt;b&gt;type import&lt;/b&gt; groups. Every group identified either by a
+     * common prefix string, or by a regular expression enclosed in forward slashes
+     * (e.g. {@code /regexp/}). All type imports, which does not match any group, falls into an
+     * additional group, located at the end. Thus, the empty list of type groups (the default value)
+     * means one group for all type imports.
+     *
+     * @param packageGroups a comma-separated list of package names/prefixes.
+     * @since 3.2
+     */
+    public void setGroups(String... packageGroups) {
+<span class="fc" id="L287">        groups = compilePatterns(packageGroups);</span>
+<span class="fc" id="L288">    }</span>
+
+    /**
+     * Setter to specify list of &lt;b&gt;static&lt;/b&gt; import groups. Every group identified either by a
+     * common prefix string, or by a regular expression enclosed in forward slashes
+     * (e.g. {@code /regexp/}). All static imports, which does not match any group, fall into an
+     * additional group, located at the end. Thus, the empty list of static groups (the default
+     * value) means one group for all static imports. This property has effect only when
+     * the property {@code option} is set to {@code top} or {@code bottom}.
+     *
+     * @param packageGroups a comma-separated list of package names/prefixes.
+     * @since 8.12
+     */
+    public void setStaticGroups(String... packageGroups) {
+<span class="fc" id="L302">        staticGroups = compilePatterns(packageGroups);</span>
+<span class="fc" id="L303">    }</span>
+
+    /**
+     * Setter to control whether type imports within each group should be sorted.
+     * It doesn't affect sorting for static imports.
+     *
+     * @param ordered
+     *            whether lexicographic ordering of imports within a group
+     *            required or not.
+     * @since 3.2
+     */
+    public void setOrdered(boolean ordered) {
+<span class="fc" id="L315">        this.ordered = ordered;</span>
+<span class="fc" id="L316">    }</span>
+
+    /**
+     * Setter to control whether type import groups should be separated by, at least,
+     * one blank line or comment and aren't separated internally.
+     * It doesn't affect separations for static imports.
+     *
+     * @param separated
+     *            whether groups should be separated by one blank line or comment.
+     * @since 3.2
+     */
+    public void setSeparated(boolean separated) {
+<span class="fc" id="L328">        this.separated = separated;</span>
+<span class="fc" id="L329">    }</span>
+
+    /**
+     * Setter to control whether static import groups should be separated by, at least,
+     * one blank line or comment and aren't separated internally.
+     * This property has effect only when the property
+     * {@code option} is set to {@code top} or {@code bottom} and when property {@code staticGroups}
+     * is enabled.
+     *
+     * @param separatedStaticGroups
+     *            whether groups should be separated by one blank line or comment.
+     * @since 8.12
+     */
+    public void setSeparatedStaticGroups(boolean separatedStaticGroups) {
+<span class="fc" id="L343">        this.separatedStaticGroups = separatedStaticGroups;</span>
+<span class="fc" id="L344">    }</span>
+
+    /**
+     * Setter to control whether string comparison should be case-sensitive or not.
+     * Case-sensitive sorting is in
+     * &lt;a href=&quot;https://en.wikipedia.org/wiki/ASCII#Order&quot;&gt;ASCII sort order&lt;/a&gt;.
+     * It affects both type imports and static imports.
+     *
+     * @param caseSensitive
+     *            whether string comparison should be case-sensitive.
+     * @since 3.3
+     */
+    public void setCaseSensitive(boolean caseSensitive) {
+<span class="fc" id="L357">        this.caseSensitive = caseSensitive;</span>
+<span class="fc" id="L358">    }</span>
+
+    /**
+     * Setter to control whether &lt;b&gt;static imports&lt;/b&gt; located at &lt;b&gt;top&lt;/b&gt; or
+     * &lt;b&gt;bottom&lt;/b&gt; are sorted within the group.
+     *
+     * @param sortAlphabetically true or false.
+     * @since 6.5
+     */
+    public void setSortStaticImportsAlphabetically(boolean sortAlphabetically) {
+<span class="fc" id="L368">        sortStaticImportsAlphabetically = sortAlphabetically;</span>
+<span class="fc" id="L369">    }</span>
+
+    /**
+     * Setter to control whether to use container ordering (Eclipse IDE term) for static
+     * imports or not.
+     *
+     * @param useContainerOrdering whether to use container ordering for static imports or not.
+     * @since 7.1
+     */
+    public void setUseContainerOrderingForStatic(boolean useContainerOrdering) {
+<span class="fc" id="L379">        useContainerOrderingForStatic = useContainerOrdering;</span>
+<span class="fc" id="L380">    }</span>
+
+    @Override
+    public int[] getDefaultTokens() {
+<span class="fc" id="L384">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+<span class="fc" id="L389">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getRequiredTokens() {
+<span class="fc" id="L394">        return new int[] {TokenTypes.IMPORT, TokenTypes.STATIC_IMPORT};</span>
+    }
+
+    @Override
+    public void beginTree(DetailAST rootAST) {
+<span class="fc" id="L399">        lastGroup = Integer.MIN_VALUE;</span>
+<span class="fc" id="L400">        lastImportLine = Integer.MIN_VALUE;</span>
+<span class="fc" id="L401">        lastImportStatic = false;</span>
+<span class="fc" id="L402">        beforeFirstImport = true;</span>
+<span class="fc bfc" id="L403" title="All 4 branches covered.">        staticImportsApart =</span>
+            option == ImportOrderOption.TOP || option == ImportOrderOption.BOTTOM;
+<span class="fc" id="L405">    }</span>
+
+    // -@cs[CyclomaticComplexity] SWITCH was transformed into IF-ELSE.
+    @Override
+    public void visitToken(DetailAST ast) {
+        final FullIdent ident;
+        final boolean isStatic;
+
+<span class="fc bfc" id="L413" title="All 2 branches covered.">        if (ast.getType() == TokenTypes.IMPORT) {</span>
+<span class="fc" id="L414">            ident = FullIdent.createFullIdentBelow(ast);</span>
+<span class="fc" id="L415">            isStatic = false;</span>
+        }
+        else {
+<span class="fc" id="L418">            ident = FullIdent.createFullIdent(ast.getFirstChild()</span>
+<span class="fc" id="L419">                    .getNextSibling());</span>
+<span class="fc" id="L420">            isStatic = true;</span>
+        }
+
+        // using set of IF instead of SWITCH to analyze Enum options to satisfy coverage.
+        // https://github.com/checkstyle/checkstyle/issues/1387
+<span class="fc bfc" id="L425" title="All 4 branches covered.">        if (option == ImportOrderOption.TOP || option == ImportOrderOption.ABOVE) {</span>
+<span class="fc bfc" id="L426" title="All 4 branches covered.">            final boolean isStaticAndNotLastImport = isStatic &amp;&amp; !lastImportStatic;</span>
+<span class="fc" id="L427">            doVisitToken(ident, isStatic, isStaticAndNotLastImport, ast);</span>
+<span class="fc" id="L428">        }</span>
+<span class="fc bfc" id="L429" title="All 4 branches covered.">        else if (option == ImportOrderOption.BOTTOM || option == ImportOrderOption.UNDER) {</span>
+<span class="fc bfc" id="L430" title="All 4 branches covered.">            final boolean isLastImportAndNonStatic = lastImportStatic &amp;&amp; !isStatic;</span>
+<span class="fc" id="L431">            doVisitToken(ident, isStatic, isLastImportAndNonStatic, ast);</span>
+<span class="fc" id="L432">        }</span>
+<span class="fc bfc" id="L433" title="All 2 branches covered.">        else if (option == ImportOrderOption.INFLOW) {</span>
+            // &quot;previous&quot; argument is useless here
+<span class="fc" id="L435">            doVisitToken(ident, isStatic, true, ast);</span>
+        }
+        else {
+<span class="fc" id="L438">            throw new IllegalStateException(</span>
+                    &quot;Unexpected option for static imports: &quot; + option);
+        }
+
+<span class="fc" id="L442">        lastImportLine = ast.findFirstToken(TokenTypes.SEMI).getLineNo();</span>
+<span class="fc" id="L443">        lastImportStatic = isStatic;</span>
+<span class="fc" id="L444">        beforeFirstImport = false;</span>
+<span class="fc" id="L445">    }</span>
+
+    /**
+     * Shares processing...
+     *
+     * @param ident the import to process.
+     * @param isStatic whether the token is static or not.
+     * @param previous previous non-static but current is static (above), or
+     *                  previous static but current is non-static (under).
+     * @param ast node of the AST.
+     */
+    private void doVisitToken(FullIdent ident, boolean isStatic, boolean previous, DetailAST ast) {
+<span class="fc" id="L457">        final String name = ident.getText();</span>
+<span class="fc bfc" id="L458" title="All 4 branches covered.">        final int groupIdx = getGroupNumber(isStatic &amp;&amp; staticImportsApart, name);</span>
+
+<span class="fc bfc" id="L460" title="All 2 branches covered.">        if (groupIdx &gt; lastGroup) {</span>
+<span class="fc bfc" id="L461" title="All 2 branches covered.">            if (!beforeFirstImport</span>
+<span class="fc bfc" id="L462" title="All 2 branches covered.">                &amp;&amp; ast.getLineNo() - lastImportLine &lt; 2</span>
+<span class="fc bfc" id="L463" title="All 2 branches covered.">                &amp;&amp; needSeparator(isStatic)) {</span>
+<span class="fc" id="L464">                log(ast, MSG_SEPARATION, name);</span>
+            }
+        }
+<span class="fc bfc" id="L467" title="All 2 branches covered.">        else if (groupIdx == lastGroup) {</span>
+<span class="fc" id="L468">            doVisitTokenInSameGroup(isStatic, previous, name, ast);</span>
+        }
+        else {
+<span class="fc" id="L471">            log(ast, MSG_ORDERING, name);</span>
+        }
+<span class="fc bfc" id="L473" title="All 2 branches covered.">        if (isSeparatorInGroup(groupIdx, isStatic, ast.getLineNo())) {</span>
+<span class="fc" id="L474">            log(ast, MSG_SEPARATED_IN_GROUP, name);</span>
+        }
+
+<span class="fc" id="L477">        lastGroup = groupIdx;</span>
+<span class="fc" id="L478">        lastImport = name;</span>
+<span class="fc" id="L479">    }</span>
+
+    /**
+     * Checks whether import groups should be separated.
+     *
+     * @param isStatic whether the token is static or not.
+     * @return true if imports groups should be separated.
+     */
+    private boolean needSeparator(boolean isStatic) {
+<span class="fc bfc" id="L488" title="All 4 branches covered.">        final boolean typeImportSeparator = !isStatic &amp;&amp; separated;</span>
+        final boolean staticImportSeparator;
+<span class="fc bfc" id="L490" title="All 2 branches covered.">        if (staticImportsApart) {</span>
+<span class="fc bfc" id="L491" title="All 4 branches covered.">            staticImportSeparator = isStatic &amp;&amp; separatedStaticGroups;</span>
+        }
+        else {
+<span class="fc" id="L494">            staticImportSeparator = separated;</span>
+        }
+<span class="fc bfc" id="L496" title="All 6 branches covered.">        final boolean separatorBetween = isStatic != lastImportStatic</span>
+            &amp;&amp; (separated || separatedStaticGroups);
+
+<span class="fc bfc" id="L499" title="All 6 branches covered.">        return typeImportSeparator || staticImportSeparator || separatorBetween;</span>
+    }
+
+    /**
+     * Checks whether imports group separated internally.
+     *
+     * @param groupIdx group number.
+     * @param isStatic whether the token is static or not.
+     * @param line the line of the current import.
+     * @return true if imports group are separated internally.
+     */
+    private boolean isSeparatorInGroup(int groupIdx, boolean isStatic, int line) {
+<span class="fc bfc" id="L511" title="All 2 branches covered.">        final boolean inSameGroup = groupIdx == lastGroup;</span>
+<span class="fc bfc" id="L512" title="All 6 branches covered.">        return (inSameGroup || !needSeparator(isStatic)) &amp;&amp; isSeparatorBeforeImport(line);</span>
+    }
+
+    /**
+     * Checks whether there is any separator before current import.
+     *
+     * @param line the line of the current import.
+     * @return true if there is separator before current import which isn't the first import.
+     */
+    private boolean isSeparatorBeforeImport(int line) {
+<span class="fc bfc" id="L522" title="All 2 branches covered.">        return line - lastImportLine &gt; 1;</span>
+    }
+
+    /**
+     * Shares processing...
+     *
+     * @param isStatic whether the token is static or not.
+     * @param previous previous non-static but current is static (above), or
+     *     previous static but current is non-static (under).
+     * @param name the name of the current import.
+     * @param ast node of the AST.
+     */
+    private void doVisitTokenInSameGroup(boolean isStatic,
+            boolean previous, String name, DetailAST ast) {
+<span class="fc bfc" id="L536" title="All 2 branches covered.">        if (ordered) {</span>
+<span class="fc bfc" id="L537" title="All 2 branches covered.">            if (option == ImportOrderOption.INFLOW) {</span>
+<span class="fc bfc" id="L538" title="All 2 branches covered.">                if (isWrongOrder(name, isStatic)) {</span>
+<span class="fc" id="L539">                    log(ast, MSG_ORDERING, name);</span>
+                }
+            }
+            else {
+<span class="fc bfc" id="L543" title="All 4 branches covered.">                final boolean shouldFireError =</span>
+                    // previous non-static but current is static (above)
+                    // or
+                    // previous static but current is non-static (under)
+                    previous
+                        ||
+                        // current and previous static or current and
+                        // previous non-static
+                        lastImportStatic == isStatic
+<span class="fc bfc" id="L552" title="All 2 branches covered.">                    &amp;&amp; isWrongOrder(name, isStatic);</span>
+
+<span class="fc bfc" id="L554" title="All 2 branches covered.">                if (shouldFireError) {</span>
+<span class="fc" id="L555">                    log(ast, MSG_ORDERING, name);</span>
+                }
+            }
+        }
+<span class="fc" id="L559">    }</span>
+
+    /**
+     * Checks whether import name is in wrong order.
+     *
+     * @param name import name.
+     * @param isStatic whether it is a static import name.
+     * @return true if import name is in wrong order.
+     */
+    private boolean isWrongOrder(String name, boolean isStatic) {
+        final boolean result;
+<span class="fc bfc" id="L570" title="All 2 branches covered.">        if (isStatic) {</span>
+<span class="fc bfc" id="L571" title="All 2 branches covered.">            if (useContainerOrderingForStatic) {</span>
+<span class="fc bfc" id="L572" title="All 2 branches covered.">                result = compareContainerOrder(lastImport, name, caseSensitive) &gt; 0;</span>
+            }
+<span class="fc bfc" id="L574" title="All 2 branches covered.">            else if (staticImportsApart) {</span>
+<span class="fc bfc" id="L575" title="All 2 branches covered.">                result = sortStaticImportsAlphabetically</span>
+<span class="fc bfc" id="L576" title="All 2 branches covered.">                    &amp;&amp; compare(lastImport, name, caseSensitive) &gt; 0;</span>
+            }
+            else {
+<span class="fc bfc" id="L579" title="All 2 branches covered.">                result = compare(lastImport, name, caseSensitive) &gt; 0;</span>
+            }
+        }
+        else {
+            // out of lexicographic order
+<span class="fc bfc" id="L584" title="All 2 branches covered.">            result = compare(lastImport, name, caseSensitive) &gt; 0;</span>
+        }
+<span class="fc" id="L586">        return result;</span>
+    }
+
+    /**
+     * Compares two import strings.
+     * We first compare the container of the static import, container being the type enclosing
+     * the static element being imported. When this returns 0, we compare the qualified
+     * import name. For e.g. this is what is considered to be container names:
+     * &lt;pre&gt;
+     * import static HttpConstants.COLON     =&amp;gt; HttpConstants
+     * import static HttpHeaders.addHeader   =&amp;gt; HttpHeaders
+     * import static HttpHeaders.setHeader   =&amp;gt; HttpHeaders
+     * import static HttpHeaders.Names.DATE  =&amp;gt; HttpHeaders.Names
+     * &lt;/pre&gt;
+     * &lt;p&gt;
+     * According to this logic, HttpHeaders.Names would come after HttpHeaders.
+     * For more details, see &lt;a href=&quot;https://bugs.eclipse.org/bugs/show_bug.cgi?id=473629#c3&quot;&gt;
+     * static imports comparison method&lt;/a&gt; in Eclipse.
+     * &lt;/p&gt;
+     *
+     * @param importName1 first import name
+     * @param importName2 second import name
+     * @param caseSensitive whether the comparison of fully qualified import names is
+     *                      case-sensitive
+     * @return the value {@code 0} if str1 is equal to str2; a value
+     *         less than {@code 0} if str is less than the str2 (container order
+     *         or lexicographical); and a value greater than {@code 0} if str1 is greater than str2
+     *         (container order or lexicographically)
+     */
+    private static int compareContainerOrder(String importName1, String importName2,
+                                             boolean caseSensitive) {
+<span class="fc" id="L617">        final String container1 = getImportContainer(importName1);</span>
+<span class="fc" id="L618">        final String container2 = getImportContainer(importName2);</span>
+        final int compareContainersOrderResult;
+<span class="fc bfc" id="L620" title="All 2 branches covered.">        if (caseSensitive) {</span>
+<span class="fc" id="L621">            compareContainersOrderResult = container1.compareTo(container2);</span>
+        }
+        else {
+<span class="fc" id="L624">            compareContainersOrderResult = container1.compareToIgnoreCase(container2);</span>
+        }
+        final int result;
+<span class="fc bfc" id="L627" title="All 2 branches covered.">        if (compareContainersOrderResult == 0) {</span>
+<span class="fc" id="L628">            result = compare(importName1, importName2, caseSensitive);</span>
+        }
+        else {
+<span class="fc" id="L631">            result = compareContainersOrderResult;</span>
+        }
+<span class="fc" id="L633">        return result;</span>
+    }
+
+    /**
+     * Extracts import container name from fully qualified import name.
+     * An import container name is the type which encloses the static element being imported.
+     * For example, HttpConstants, HttpHeaders, HttpHeaders.Names are import container names:
+     * &lt;pre&gt;
+     * import static HttpConstants.COLON     =&amp;gt; HttpConstants
+     * import static HttpHeaders.addHeader   =&amp;gt; HttpHeaders
+     * import static HttpHeaders.setHeader   =&amp;gt; HttpHeaders
+     * import static HttpHeaders.Names.DATE  =&amp;gt; HttpHeaders.Names
+     * &lt;/pre&gt;
+     *
+     * @param qualifiedImportName fully qualified import name.
+     * @return import container name.
+     */
+    private static String getImportContainer(String qualifiedImportName) {
+<span class="fc" id="L651">        final int lastDotIndex = qualifiedImportName.lastIndexOf('.');</span>
+<span class="fc" id="L652">        return qualifiedImportName.substring(0, lastDotIndex);</span>
+    }
+
+    /**
+     * Finds out what group the specified import belongs to.
+     *
+     * @param isStatic whether the token is static or not.
+     * @param name the import name to find.
+     * @return group number for given import name.
+     */
+    private int getGroupNumber(boolean isStatic, String name) {
+        final Pattern[] patterns;
+<span class="fc bfc" id="L664" title="All 2 branches covered.">        if (isStatic) {</span>
+<span class="fc" id="L665">            patterns = staticGroups;</span>
+        }
+        else {
+<span class="fc" id="L668">            patterns = groups;</span>
+        }
+
+<span class="fc" id="L671">        int number = getGroupNumber(patterns, name);</span>
+
+<span class="fc bfc" id="L673" title="All 4 branches covered.">        if (isStatic &amp;&amp; option == ImportOrderOption.BOTTOM) {</span>
+<span class="fc" id="L674">            number += groups.length + 1;</span>
+        }
+<span class="fc bfc" id="L676" title="All 4 branches covered.">        else if (!isStatic &amp;&amp; option == ImportOrderOption.TOP) {</span>
+<span class="fc" id="L677">            number += staticGroups.length + 1;</span>
+        }
+<span class="fc" id="L679">        return number;</span>
+    }
+
+    /**
+     * Finds out what group the specified import belongs to.
+     *
+     * @param patterns groups to check.
+     * @param name the import name to find.
+     * @return group number for given import name.
+     */
+    private static int getGroupNumber(Pattern[] patterns, String name) {
+<span class="fc" id="L690">        int bestIndex = patterns.length;</span>
+<span class="fc" id="L691">        int bestEnd = -1;</span>
+<span class="fc" id="L692">        int bestPos = Integer.MAX_VALUE;</span>
+
+        // find out what group this belongs in
+        // loop over patterns and get index
+<span class="fc bfc" id="L696" title="All 2 branches covered.">        for (int i = 0; i &lt; patterns.length; i++) {</span>
+<span class="fc" id="L697">            final Matcher matcher = patterns[i].matcher(name);</span>
+<span class="fc bfc" id="L698" title="All 2 branches covered.">            if (matcher.find()) {</span>
+<span class="fc bfc" id="L699" title="All 2 branches covered.">                if (matcher.start() &lt; bestPos) {</span>
+<span class="fc" id="L700">                    bestIndex = i;</span>
+<span class="fc" id="L701">                    bestEnd = matcher.end();</span>
+<span class="fc" id="L702">                    bestPos = matcher.start();</span>
+                }
+<span class="fc bfc" id="L704" title="All 4 branches covered.">                else if (matcher.start() == bestPos &amp;&amp; matcher.end() &gt; bestEnd) {</span>
+<span class="fc" id="L705">                    bestIndex = i;</span>
+<span class="fc" id="L706">                    bestEnd = matcher.end();</span>
+                }
+            }
+        }
+<span class="fc" id="L710">        return bestIndex;</span>
+    }
+
+    /**
+     * Compares two strings.
+     *
+     * @param string1
+     *            the first string
+     * @param string2
+     *            the second string
+     * @param caseSensitive
+     *            whether the comparison is case-sensitive
+     * @return the value {@code 0} if string1 is equal to string2; a value
+     *         less than {@code 0} if string1 is lexicographically less
+     *         than the string2; and a value greater than {@code 0} if
+     *         string1 is lexicographically greater than string2
+     */
+    private static int compare(String string1, String string2,
+            boolean caseSensitive) {
+        final int result;
+<span class="fc bfc" id="L730" title="All 2 branches covered.">        if (caseSensitive) {</span>
+<span class="fc" id="L731">            result = string1.compareTo(string2);</span>
+        }
+        else {
+<span class="fc" id="L734">            result = string1.compareToIgnoreCase(string2);</span>
+        }
+
+<span class="fc" id="L737">        return result;</span>
+    }
+
+    /**
+     * Compiles the list of package groups and the order they should occur in the file.
+     *
+     * @param packageGroups a comma-separated list of package names/prefixes.
+     * @return array of compiled patterns.
+     * @throws IllegalArgumentException if any of the package groups are not valid.
+     */
+    private static Pattern[] compilePatterns(String... packageGroups) {
+<span class="fc" id="L748">        final Pattern[] patterns = new Pattern[packageGroups.length];</span>
+<span class="fc bfc" id="L749" title="All 2 branches covered.">        for (int i = 0; i &lt; packageGroups.length; i++) {</span>
+<span class="fc" id="L750">            String pkg = packageGroups[i];</span>
+            final Pattern grp;
+
+            // if the pkg name is the wildcard, make it match zero chars
+            // from any name, so it will always be used as last resort.
+<span class="fc bfc" id="L755" title="All 2 branches covered.">            if (WILDCARD_GROUP_NAME.equals(pkg)) {</span>
+                // matches any package
+<span class="fc" id="L757">                grp = Pattern.compile(&quot;&quot;);</span>
+            }
+<span class="fc bfc" id="L759" title="All 2 branches covered.">            else if (pkg.startsWith(FORWARD_SLASH)) {</span>
+<span class="fc bfc" id="L760" title="All 2 branches covered.">                if (!pkg.endsWith(FORWARD_SLASH)) {</span>
+<span class="fc" id="L761">                    throw new IllegalArgumentException(&quot;Invalid group: &quot; + pkg);</span>
+                }
+<span class="fc" id="L763">                pkg = pkg.substring(1, pkg.length() - 1);</span>
+<span class="fc" id="L764">                grp = Pattern.compile(pkg);</span>
+            }
+            else {
+<span class="fc" id="L767">                final StringBuilder pkgBuilder = new StringBuilder(pkg);</span>
+<span class="fc bfc" id="L768" title="All 2 branches covered.">                if (!pkg.endsWith(&quot;.&quot;)) {</span>
+<span class="fc" id="L769">                    pkgBuilder.append('.');</span>
+                }
+<span class="fc" id="L771">                grp = Pattern.compile(&quot;^&quot; + Pattern.quote(pkgBuilder.toString()));</span>
+            }
+
+<span class="fc" id="L774">            patterns[i] = grp;</span>
+        }
+<span class="fc" id="L776">        return patterns;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

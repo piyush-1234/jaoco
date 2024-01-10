@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LocalizedMessage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle</a> &gt; <span class="el_source">LocalizedMessage.java</span></div><h1>LocalizedMessage.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle;
+
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.net.URL;
+import java.net.URLConnection;
+import java.nio.charset.StandardCharsets;
+import java.text.MessageFormat;
+import java.util.Locale;
+import java.util.MissingResourceException;
+import java.util.PropertyResourceBundle;
+import java.util.ResourceBundle;
+import java.util.ResourceBundle.Control;
+
+import com.puppycrawl.tools.checkstyle.utils.UnmodifiableCollectionUtil;
+
+/**
+ * Represents a message that can be localised. The translations come from
+ * message.properties files. The underlying implementation uses
+ * java.text.MessageFormat.
+ */
+public class LocalizedMessage {
+
+    /** The locale to localise messages to. **/
+<span class="fc" id="L45">    private static Locale sLocale = Locale.getDefault();</span>
+
+    /** Name of the resource bundle to get messages from. **/
+    private final String bundle;
+
+    /** Class of the source for this message. */
+    private final Class&lt;?&gt; sourceClass;
+
+    /**
+     * Key for the message format.
+     **/
+    private final String key;
+
+    /**
+     * Arguments for java.text.MessageFormat, that is why type is Object[].
+     *
+     * &lt;p&gt;Note: Changing types from Object[] will be huge breaking compatibility, as Module
+     * messages use some type formatting already, so better to keep it as Object[].
+     * &lt;/p&gt;
+     */
+    private final Object[] args;
+
+    /**
+     * Creates a new {@code LocalizedMessage} instance.
+     *
+     * @param bundle resource bundle name
+     * @param sourceClass the Class that is the source of the message
+     * @param key the key to locate the translation.
+     * @param args arguments for the translation.
+     */
+    public LocalizedMessage(String bundle, Class&lt;?&gt; sourceClass, String key,
+<span class="fc" id="L76">            Object... args) {</span>
+<span class="fc" id="L77">        this.bundle = bundle;</span>
+<span class="fc" id="L78">        this.sourceClass = sourceClass;</span>
+<span class="fc" id="L79">        this.key = key;</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        if (args == null) {</span>
+<span class="fc" id="L81">            this.args = null;</span>
+        }
+        else {
+<span class="fc" id="L84">            this.args = UnmodifiableCollectionUtil.copyOfArray(args, args.length);</span>
+        }
+<span class="fc" id="L86">    }</span>
+
+    /**
+     * Sets a locale to use for localization.
+     *
+     * @param locale the locale to use for localization
+     */
+    public static void setLocale(Locale locale) {
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        if (Locale.ENGLISH.getLanguage().equals(locale.getLanguage())) {</span>
+<span class="fc" id="L95">            sLocale = Locale.ROOT;</span>
+        }
+        else {
+<span class="fc" id="L98">            sLocale = locale;</span>
+        }
+<span class="fc" id="L100">    }</span>
+
+    /**
+     * Gets the translated message.
+     *
+     * @return the translated message.
+     */
+    public String getMessage() {
+        String result;
+        try {
+            // Important to use the default class loader, and not the one in
+            // the GlobalProperties object. This is because the class loader in
+            // the GlobalProperties is specified by the user for resolving
+            // custom classes.
+<span class="fc" id="L114">            final ResourceBundle resourceBundle = getBundle();</span>
+<span class="fc" id="L115">            final String pattern = resourceBundle.getString(key);</span>
+<span class="fc" id="L116">            final MessageFormat formatter = new MessageFormat(pattern, Locale.ROOT);</span>
+<span class="fc" id="L117">            result = formatter.format(args);</span>
+        }
+<span class="fc" id="L119">        catch (final MissingResourceException ignored) {</span>
+            // If the Check author didn't provide i18n resource bundles
+            // and logs audit event messages directly, this will return
+            // the author's original message
+<span class="fc" id="L123">            final MessageFormat formatter = new MessageFormat(key, Locale.ROOT);</span>
+<span class="fc" id="L124">            result = formatter.format(args);</span>
+<span class="fc" id="L125">        }</span>
+<span class="fc" id="L126">        return result;</span>
+    }
+
+    /**
+     * Obtain the ResourceBundle. Uses the classloader
+     * of the class emitting this message, to be sure to get the correct
+     * bundle.
+     *
+     * @return a ResourceBundle.
+     */
+    private ResourceBundle getBundle() {
+<span class="fc" id="L137">        return ResourceBundle.getBundle(bundle, sLocale, sourceClass.getClassLoader(),</span>
+                new Utf8Control());
+    }
+
+    /**
+     * &lt;p&gt;
+     * Custom ResourceBundle.Control implementation which allows explicitly read
+     * the properties files as UTF-8.
+     * &lt;/p&gt;
+     */
+<span class="fc" id="L147">    public static class Utf8Control extends Control {</span>
+
+        @Override
+        public ResourceBundle newBundle(String baseName, Locale locale, String format,
+                 ClassLoader loader, boolean reload) throws IOException {
+            // The below is a copy of the default implementation.
+<span class="fc" id="L153">            final String bundleName = toBundleName(baseName, locale);</span>
+<span class="fc" id="L154">            final String resourceName = toResourceName(bundleName, &quot;properties&quot;);</span>
+<span class="fc" id="L155">            final URL url = loader.getResource(resourceName);</span>
+<span class="fc" id="L156">            ResourceBundle resourceBundle = null;</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            if (url != null) {</span>
+<span class="fc" id="L158">                final URLConnection connection = url.openConnection();</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">                if (connection != null) {</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">                    connection.setUseCaches(!reload);</span>
+<span class="fc" id="L161">                    try (Reader streamReader = new InputStreamReader(connection.getInputStream(),</span>
+                            StandardCharsets.UTF_8)) {
+                        // Only this line is changed to make it read property files as UTF-8.
+<span class="fc" id="L164">                        resourceBundle = new PropertyResourceBundle(streamReader);</span>
+                    }
+                }
+            }
+<span class="fc" id="L168">            return resourceBundle;</span>
+        }
+
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

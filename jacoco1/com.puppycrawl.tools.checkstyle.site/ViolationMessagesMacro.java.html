@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ViolationMessagesMacro.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.site</a> &gt; <span class="el_source">ViolationMessagesMacro.java</span></div><h1>ViolationMessagesMacro.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.site;
+
+import java.util.Set;
+
+import org.apache.maven.doxia.macro.AbstractMacro;
+import org.apache.maven.doxia.macro.Macro;
+import org.apache.maven.doxia.macro.MacroExecutionException;
+import org.apache.maven.doxia.macro.MacroRequest;
+import org.apache.maven.doxia.module.xdoc.XdocSink;
+import org.apache.maven.doxia.sink.Sink;
+import org.codehaus.plexus.component.annotations.Component;
+
+/**
+ * A macro that inserts a list of the violation messages.
+ */
+@Component(role = Macro.class, hint = &quot;violation-messages&quot;)
+<span class="fc" id="L36">public class ViolationMessagesMacro extends AbstractMacro {</span>
+    @Override
+    public void execute(Sink sink, MacroRequest request) throws MacroExecutionException {
+        // until https://github.com/checkstyle/checkstyle/issues/13426
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">        if (!(sink instanceof XdocSink)) {</span>
+<span class="nc" id="L41">            throw new MacroExecutionException(&quot;Expected Sink to be an XdocSink.&quot;);</span>
+        }
+<span class="fc" id="L43">        final String checkName = (String) request.getParameter(&quot;checkName&quot;);</span>
+<span class="fc" id="L44">        final Object instance = SiteUtil.getModuleInstance(checkName);</span>
+<span class="fc" id="L45">        final Class&lt;?&gt; clss = instance.getClass();</span>
+<span class="fc" id="L46">        final Set&lt;String&gt; messageKeys = SiteUtil.getMessageKeys(clss);</span>
+<span class="fc" id="L47">        createListOfMessages((XdocSink) sink, clss, messageKeys);</span>
+<span class="fc" id="L48">    }</span>
+
+    /**
+     * Iterates through the fields of the class and creates an unordered list.
+     *
+     * @param sink the sink to write to.
+     * @param clss the class of the fields.
+     * @param messageKeys the List of message keys to iterate through.
+     */
+    private static void createListOfMessages(
+            XdocSink sink, Class&lt;?&gt; clss, Set&lt;String&gt; messageKeys) {
+<span class="fc" id="L59">        final String indentLevel8 = SiteUtil.getNewlineAndIndentSpaces(8);</span>
+
+        // This is a hack to prevent a newline from being inserted by the default sink.
+        // Once we get rid of the custom parser, we can remove this.
+        // until https://github.com/checkstyle/checkstyle/issues/13426
+<span class="fc" id="L64">        sink.setInsertNewline(false);</span>
+<span class="fc" id="L65">        sink.list();</span>
+<span class="fc" id="L66">        sink.setInsertNewline(true);</span>
+
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        for (String messageKey : messageKeys) {</span>
+<span class="fc" id="L69">            createListItem(sink, clss, messageKey);</span>
+<span class="fc" id="L70">        }</span>
+<span class="fc" id="L71">        sink.rawText(indentLevel8);</span>
+<span class="fc" id="L72">        sink.list_();</span>
+<span class="fc" id="L73">    }</span>
+
+    /**
+     * Creates a list item for the given field.
+     *
+     * @param sink the sink to write to.
+     * @param clss the class of the field.
+     * @param messageKey the message key.
+     */
+    private static void createListItem(XdocSink sink, Class&lt;?&gt; clss, String messageKey) {
+<span class="fc" id="L83">        final String messageKeyUrl = constructMessageKeyUrl(clss, messageKey);</span>
+<span class="fc" id="L84">        final String indentLevel10 = SiteUtil.getNewlineAndIndentSpaces(10);</span>
+<span class="fc" id="L85">        final String indentLevel12 = SiteUtil.getNewlineAndIndentSpaces(12);</span>
+<span class="fc" id="L86">        final String indentLevel14 = SiteUtil.getNewlineAndIndentSpaces(14);</span>
+        // Place the &lt;li&gt;.
+<span class="fc" id="L88">        sink.rawText(indentLevel10);</span>
+        // This is a hack to prevent a newline from being inserted by the default sink.
+        // Once we get rid of the custom parser, we can remove this.
+        // until https://github.com/checkstyle/checkstyle/issues/13426
+<span class="fc" id="L92">        sink.setInsertNewline(false);</span>
+<span class="fc" id="L93">        sink.listItem();</span>
+<span class="fc" id="L94">        sink.setInsertNewline(true);</span>
+
+        // Place an &lt;a&gt;.
+<span class="fc" id="L97">        sink.rawText(indentLevel12);</span>
+<span class="fc" id="L98">        sink.link(messageKeyUrl);</span>
+        // Further indent the text.
+<span class="fc" id="L100">        sink.rawText(indentLevel14);</span>
+<span class="fc" id="L101">        sink.rawText(messageKey);</span>
+
+        // Place closing &lt;/a&gt; and &lt;/li&gt; tags.
+<span class="fc" id="L104">        sink.rawText(indentLevel12);</span>
+<span class="fc" id="L105">        sink.link_();</span>
+<span class="fc" id="L106">        sink.rawText(indentLevel10);</span>
+<span class="fc" id="L107">        sink.listItem_();</span>
+<span class="fc" id="L108">    }</span>
+
+    /**
+     * Constructs a URL to GitHub that searches for the message key.
+     *
+     * @param clss the class of the module.
+     * @param messageKey the message key.
+     * @return the URL to GitHub.
+     */
+    private static String constructMessageKeyUrl(Class&lt;?&gt; clss, String messageKey) {
+<span class="fc" id="L118">        return &quot;https://github.com/search?q=&quot;</span>
+                + &quot;path%3Asrc%2Fmain%2Fresources%2F&quot;
+<span class="fc" id="L120">                + clss.getPackage().getName().replace(&quot;.&quot;, &quot;%2F&quot;)</span>
+                + &quot;%20path%3A**%2Fmessages*.properties+repo%3Acheckstyle%2F&quot;
+                + &quot;checkstyle+%22&quot; + messageKey + &quot;%22&quot;;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

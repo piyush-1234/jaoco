@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UnmodifiableCollectionUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.utils</a> &gt; <span class="el_source">UnmodifiableCollectionUtil.java</span></div><h1>UnmodifiableCollectionUtil.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.utils;
+
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/**
+ * &lt;p&gt;Note: it simply wraps the existing JDK methods to provide a workaround
+ * for Pitest survival on mutation for removal of immutable wrapping,
+ * see #13127 for more details.
+ * &lt;/p&gt;
+ *
+ */
+public final class UnmodifiableCollectionUtil {
+
+    /**
+     * Private constructor for UnmodifiableCollectionUtil.
+     *
+     */
+    private UnmodifiableCollectionUtil() {
+    }
+
+    /**
+     * Creates an unmodifiable set based on the provided collection.
+     *
+     * @param collection the collection to create an unmodifiable set from
+     * @param &lt;T&gt; the type of elements in the set
+     * @return an unmodifiable set containing the elements from the provided collection
+     */
+    public static &lt;T&gt; Set&lt;T&gt; unmodifiableSet(Set&lt;T&gt; collection) {
+<span class="fc" id="L54">        return Collections.unmodifiableSet(collection);</span>
+    }
+
+    /**
+     * Creates an unmodifiable list based on the provided collection.
+     *
+     * @param collection the collection to create an unmodifiable list from
+     * @param &lt;T&gt; the type of elements in the set
+     * @return an unmodifiable list containing the elements from the provided collection
+     */
+    public static &lt;T&gt; List&lt;T&gt; unmodifiableList(List&lt;T&gt; collection) {
+<span class="fc" id="L65">        return Collections.unmodifiableList(collection);</span>
+    }
+
+    /**
+     * Returns an unmodifiable view of a List containing elements of a specific type.
+     *
+     * @param items The List of items to make unmodifiable.
+     * @param elementType The Class object representing the type of elements in the list.
+     * @param &lt;S&gt; The generic type of elements in the input Collection.
+     * @param &lt;T&gt; The type of elements in the resulting unmodifiable List.
+     * @return An unmodifiable List containing elements of the specified type.
+     */
+    public static &lt;S, T&gt; List&lt;T&gt; unmodifiableList(Collection&lt;S&gt; items, Class&lt;T&gt; elementType) {
+<span class="fc" id="L78">        return items.stream()</span>
+<span class="fc" id="L79">                .map(elementType::cast)</span>
+<span class="fc" id="L80">                .collect(Collectors.toUnmodifiableList());</span>
+    }
+
+    /**
+     * Creates a copy of array.
+     *
+     * @param array Array to create a copy of
+     * @param length length of array
+     * @param &lt;T&gt; The type of array
+     * @return copy of array
+     */
+    public static &lt;T&gt; T[] copyOfArray(T[] array, int length) {
+<span class="fc" id="L92">        return Arrays.copyOf(array, length);</span>
+    }
+
+    /**
+     * Creates a copy of Map.
+     *
+     * @param map map to create a copy of
+     * @param &lt;K&gt; the type of keys in the map
+     * @param &lt;V&gt; the type of values in the map
+     * @return an immutable copy of the input map
+     */
+    public static &lt;K, V&gt; Map&lt;K, V&gt; copyOfMap(Map&lt;? extends K, ? extends V&gt; map) {
+<span class="fc" id="L104">        return Map.copyOf(map);</span>
+    }
+
+    /**
+     * Returns an immutable set containing only the specified object.
+     *
+     * @param obj the type of object in the set
+     * @param &lt;T&gt; the type of object
+     * @return immutable set
+     */
+    public static &lt;T&gt; Set&lt;T&gt; singleton(T obj) {
+<span class="fc" id="L115">        return Collections.singleton(obj);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

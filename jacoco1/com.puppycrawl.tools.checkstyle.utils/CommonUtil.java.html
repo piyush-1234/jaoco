@@ -1,0 +1,598 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CommonUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.utils</a> &gt; <span class="el_source">CommonUtil.java</span></div><h1>CommonUtil.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.utils;
+
+import java.io.Closeable;
+import java.io.File;
+import java.io.IOException;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.BitSet;
+import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
+
+import com.puppycrawl.tools.checkstyle.api.CheckstyleException;
+
+/**
+ * Contains utility methods.
+ *
+ */
+public final class CommonUtil {
+
+    /** Default tab width for column reporting. */
+    public static final int DEFAULT_TAB_WIDTH = 8;
+
+    /** For cases where no tokens should be accepted. */
+<span class="fc" id="L51">    public static final BitSet EMPTY_BIT_SET = new BitSet();</span>
+    /** Copied from org.apache.commons.lang3.ArrayUtils. */
+<span class="fc" id="L53">    public static final String[] EMPTY_STRING_ARRAY = new String[0];</span>
+    /** Copied from org.apache.commons.lang3.ArrayUtils. */
+<span class="fc" id="L55">    public static final Integer[] EMPTY_INTEGER_OBJECT_ARRAY = new Integer[0];</span>
+    /** Copied from org.apache.commons.lang3.ArrayUtils. */
+<span class="fc" id="L57">    public static final Object[] EMPTY_OBJECT_ARRAY = new Object[0];</span>
+    /** Copied from org.apache.commons.lang3.ArrayUtils. */
+<span class="fc" id="L59">    public static final int[] EMPTY_INT_ARRAY = new int[0];</span>
+    /** Copied from org.apache.commons.lang3.ArrayUtils. */
+<span class="fc" id="L61">    public static final byte[] EMPTY_BYTE_ARRAY = new byte[0];</span>
+    /** Copied from org.apache.commons.lang3.ArrayUtils. */
+<span class="fc" id="L63">    public static final double[] EMPTY_DOUBLE_ARRAY = new double[0];</span>
+    /** Pseudo URL protocol for loading from the class path. */
+    public static final String CLASSPATH_URL_PROTOCOL = &quot;classpath:&quot;;
+
+    /** Prefix for the exception when unable to find resource. */
+    private static final String UNABLE_TO_FIND_EXCEPTION_PREFIX = &quot;Unable to find: &quot;;
+
+    /** The extension separator. */
+    private static final String EXTENSION_SEPARATOR = &quot;.&quot;;
+
+    /** Stop instances being created. **/
+    private CommonUtil() {
+    }
+
+    /**
+     * Helper method to create a regular expression.
+     *
+     * @param pattern
+     *            the pattern to match
+     * @return a created regexp object
+     * @throws IllegalArgumentException
+     *             if unable to create Pattern object.
+     **/
+    public static Pattern createPattern(String pattern) {
+<span class="fc" id="L87">        return createPattern(pattern, 0);</span>
+    }
+
+    /**
+     * Helper method to create a regular expression with a specific flags.
+     *
+     * @param pattern
+     *            the pattern to match
+     * @param flags
+     *            the flags to set
+     * @return a created regexp object
+     * @throws IllegalArgumentException
+     *             if unable to create Pattern object.
+     **/
+    public static Pattern createPattern(String pattern, int flags) {
+        try {
+<span class="fc" id="L103">            return Pattern.compile(pattern, flags);</span>
+        }
+<span class="fc" id="L105">        catch (final PatternSyntaxException ex) {</span>
+<span class="fc" id="L106">            throw new IllegalArgumentException(</span>
+                &quot;Failed to initialise regular expression &quot; + pattern, ex);
+        }
+    }
+
+    /**
+     * Returns whether the file extension matches what we are meant to process.
+     *
+     * @param file
+     *            the file to be checked.
+     * @param fileExtensions
+     *            files extensions, empty property in config makes it matches to all.
+     * @return whether there is a match.
+     */
+    public static boolean matchesFileExtension(File file, String... fileExtensions) {
+<span class="fc" id="L121">        boolean result = false;</span>
+<span class="fc bfc" id="L122" title="All 4 branches covered.">        if (fileExtensions == null || fileExtensions.length == 0) {</span>
+<span class="fc" id="L123">            result = true;</span>
+        }
+        else {
+            // normalize extensions so all of them have a leading dot
+<span class="fc" id="L127">            final String[] withDotExtensions = new String[fileExtensions.length];</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">            for (int i = 0; i &lt; fileExtensions.length; i++) {</span>
+<span class="fc" id="L129">                final String extension = fileExtensions[i];</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">                if (extension.startsWith(EXTENSION_SEPARATOR)) {</span>
+<span class="fc" id="L131">                    withDotExtensions[i] = extension;</span>
+                }
+                else {
+<span class="fc" id="L134">                    withDotExtensions[i] = EXTENSION_SEPARATOR + extension;</span>
+                }
+            }
+
+<span class="fc" id="L138">            final String fileName = file.getName();</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            for (final String fileExtension : withDotExtensions) {</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">                if (fileName.endsWith(fileExtension)) {</span>
+<span class="fc" id="L141">                    result = true;</span>
+<span class="fc" id="L142">                    break;</span>
+                }
+            }
+        }
+
+<span class="fc" id="L147">        return result;</span>
+    }
+
+    /**
+     * Returns whether the specified string contains only whitespace up to the specified index.
+     *
+     * @param index
+     *            index to check up to
+     * @param line
+     *            the line to check
+     * @return whether there is only whitespace
+     */
+    public static boolean hasWhitespaceBefore(int index, String line) {
+<span class="fc" id="L160">        boolean result = true;</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        for (int i = 0; i &lt; index; i++) {</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">            if (!Character.isWhitespace(line.charAt(i))) {</span>
+<span class="fc" id="L163">                result = false;</span>
+<span class="fc" id="L164">                break;</span>
+            }
+        }
+<span class="fc" id="L167">        return result;</span>
+    }
+
+    /**
+     * Returns the length of a string ignoring all trailing whitespace.
+     * It is a pity that there is not a trim() like
+     * method that only removed the trailing whitespace.
+     *
+     * @param line
+     *            the string to process
+     * @return the length of the string ignoring all trailing whitespace
+     **/
+    public static int lengthMinusTrailingWhitespace(String line) {
+<span class="fc" id="L180">        int len = line.length();</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        for (int i = len - 1; i &gt;= 0; i--) {</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">            if (!Character.isWhitespace(line.charAt(i))) {</span>
+<span class="fc" id="L183">                break;</span>
+            }
+<span class="fc" id="L185">            len--;</span>
+        }
+<span class="fc" id="L187">        return len;</span>
+    }
+
+    /**
+     * Returns the length of a String prefix with tabs expanded.
+     * Each tab is counted as the number of characters is
+     * takes to jump to the next tab stop.
+     *
+     * @param inputString
+     *            the input String
+     * @param toIdx
+     *            index in string (exclusive) where the calculation stops
+     * @param tabWidth
+     *            the distance between tab stop position.
+     * @return the length of string.substring(0, toIdx) with tabs expanded.
+     */
+    public static int lengthExpandedTabs(String inputString,
+            int toIdx,
+            int tabWidth) {
+<span class="fc" id="L206">        int len = 0;</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">        for (int idx = 0; idx &lt; toIdx; idx++) {</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">            if (inputString.codePointAt(idx) == '\t') {</span>
+<span class="fc" id="L209">                len = (len / tabWidth + 1) * tabWidth;</span>
+            }
+            else {
+<span class="fc" id="L212">                len++;</span>
+            }
+        }
+<span class="fc" id="L215">        return len;</span>
+    }
+
+    /**
+     * Validates whether passed string is a valid pattern or not.
+     *
+     * @param pattern
+     *            string to validate
+     * @return true if the pattern is valid false otherwise
+     */
+    public static boolean isPatternValid(String pattern) {
+<span class="fc" id="L226">        boolean isValid = true;</span>
+        try {
+<span class="fc" id="L228">            Pattern.compile(pattern);</span>
+        }
+<span class="fc" id="L230">        catch (final PatternSyntaxException ignored) {</span>
+<span class="fc" id="L231">            isValid = false;</span>
+<span class="fc" id="L232">        }</span>
+<span class="fc" id="L233">        return isValid;</span>
+    }
+
+    /**
+     * Returns base class name from qualified name.
+     *
+     * @param type
+     *            the fully qualified name. Cannot be null
+     * @return the base class name from a fully qualified name
+     */
+    public static String baseClassName(String type) {
+<span class="fc" id="L244">        final int index = type.lastIndexOf('.');</span>
+<span class="fc" id="L245">        return type.substring(index + 1);</span>
+    }
+
+    /**
+     * Constructs a relative path between base directory and a given path.
+     *
+     * @param baseDirectory
+     *            the base path to which given path is relativized
+     * @param path
+     *            the path to relativize against base directory
+     * @return the relative normalized path between base directory and
+     *     path or path if base directory is null.
+     */
+    public static String relativizePath(final String baseDirectory, final String path) {
+        final String resultPath;
+<span class="fc bfc" id="L260" title="All 2 branches covered.">        if (baseDirectory == null) {</span>
+<span class="fc" id="L261">            resultPath = path;</span>
+        }
+        else {
+<span class="fc" id="L264">            final Path pathAbsolute = Paths.get(path);</span>
+<span class="fc" id="L265">            final Path pathBase = Paths.get(baseDirectory);</span>
+<span class="fc" id="L266">            resultPath = pathBase.relativize(pathAbsolute).toString();</span>
+        }
+<span class="fc" id="L268">        return resultPath;</span>
+    }
+
+    /**
+     * Gets constructor of targetClass.
+     *
+     * @param &lt;T&gt; type of the target class object.
+     * @param targetClass
+     *            from which constructor is returned
+     * @param parameterTypes
+     *            of constructor
+     * @return constructor of targetClass
+     * @throws IllegalStateException if any exception occurs
+     * @see Class#getConstructor(Class[])
+     */
+    public static &lt;T&gt; Constructor&lt;T&gt; getConstructor(Class&lt;T&gt; targetClass,
+                                                    Class&lt;?&gt;... parameterTypes) {
+        try {
+<span class="fc" id="L286">            return targetClass.getConstructor(parameterTypes);</span>
+        }
+<span class="fc" id="L288">        catch (NoSuchMethodException ex) {</span>
+<span class="fc" id="L289">            throw new IllegalStateException(ex);</span>
+        }
+    }
+
+    /**
+     * Returns new instance of a class.
+     *
+     * @param &lt;T&gt;
+     *            type of constructor
+     * @param constructor
+     *            to invoke
+     * @param parameters
+     *            to pass to constructor
+     * @return new instance of class
+     * @throws IllegalStateException if any exception occurs
+     * @see Constructor#newInstance(Object...)
+     */
+    public static &lt;T&gt; T invokeConstructor(Constructor&lt;T&gt; constructor, Object... parameters) {
+        try {
+<span class="fc" id="L308">            return constructor.newInstance(parameters);</span>
+        }
+<span class="fc" id="L310">        catch (InstantiationException | IllegalAccessException | InvocationTargetException ex) {</span>
+<span class="fc" id="L311">            throw new IllegalStateException(ex);</span>
+        }
+    }
+
+    /**
+     * Closes a stream re-throwing IOException as IllegalStateException.
+     *
+     * @param closeable
+     *            Closeable object
+     * @throws IllegalStateException when any IOException occurs
+     */
+    public static void close(Closeable closeable) {
+<span class="fc bfc" id="L323" title="All 2 branches covered.">        if (closeable != null) {</span>
+            try {
+<span class="fc" id="L325">                closeable.close();</span>
+            }
+<span class="fc" id="L327">            catch (IOException ex) {</span>
+<span class="fc" id="L328">                throw new IllegalStateException(&quot;Cannot close the stream&quot;, ex);</span>
+<span class="fc" id="L329">            }</span>
+        }
+<span class="fc" id="L331">    }</span>
+
+    /**
+     * Resolve the specified filename to a URI.
+     *
+     * @param filename name of the file
+     * @return resolved file URI
+     * @throws CheckstyleException on failure
+     */
+    public static URI getUriByFilename(String filename) throws CheckstyleException {
+<span class="fc" id="L341">        URI uri = getWebOrFileProtocolUri(filename);</span>
+
+<span class="fc bfc" id="L343" title="All 2 branches covered.">        if (uri == null) {</span>
+<span class="fc" id="L344">            uri = getFilepathOrClasspathUri(filename);</span>
+        }
+
+<span class="fc" id="L347">        return uri;</span>
+    }
+
+    /**
+     * Resolves the specified filename containing 'http', 'https', 'ftp',
+     * and 'file' protocols (or any RFC 2396 compliant URL) to a URI.
+     *
+     * @param filename name of the file
+     * @return resolved file URI or null if URL is malformed or non-existent
+     */
+    public static URI getWebOrFileProtocolUri(String filename) {
+        URI uri;
+        try {
+<span class="fc" id="L360">            final URL url = new URL(filename);</span>
+<span class="fc" id="L361">            uri = url.toURI();</span>
+        }
+<span class="fc" id="L363">        catch (URISyntaxException | MalformedURLException ignored) {</span>
+<span class="fc" id="L364">            uri = null;</span>
+<span class="fc" id="L365">        }</span>
+<span class="fc" id="L366">        return uri;</span>
+    }
+
+    /**
+     * Resolves the specified local filename, possibly with 'classpath:'
+     * protocol, to a URI.  First we attempt to create a new file with
+     * given filename, then attempt to load file from class path.
+     *
+     * @param filename name of the file
+     * @return resolved file URI
+     * @throws CheckstyleException on failure
+     */
+    private static URI getFilepathOrClasspathUri(String filename) throws CheckstyleException {
+        final URI uri;
+<span class="fc" id="L380">        final File file = new File(filename);</span>
+
+<span class="fc bfc" id="L382" title="All 2 branches covered.">        if (file.exists()) {</span>
+<span class="fc" id="L383">            uri = file.toURI();</span>
+        }
+        else {
+            final int lastIndexOfClasspathProtocol;
+<span class="fc bfc" id="L387" title="All 2 branches covered.">            if (filename.lastIndexOf(CLASSPATH_URL_PROTOCOL) == 0) {</span>
+<span class="fc" id="L388">                lastIndexOfClasspathProtocol = CLASSPATH_URL_PROTOCOL.length();</span>
+            }
+            else {
+<span class="fc" id="L391">                lastIndexOfClasspathProtocol = 0;</span>
+            }
+<span class="fc" id="L393">            uri = getResourceFromClassPath(filename</span>
+<span class="fc" id="L394">                .substring(lastIndexOfClasspathProtocol));</span>
+        }
+<span class="fc" id="L396">        return uri;</span>
+    }
+
+    /**
+     * Gets a resource from the classpath.
+     *
+     * @param filename name of file
+     * @return URI of file in classpath
+     * @throws CheckstyleException on failure
+     */
+    public static URI getResourceFromClassPath(String filename) throws CheckstyleException {
+        final URL configUrl;
+<span class="fc bfc" id="L408" title="All 2 branches covered.">        if (filename.charAt(0) == '/') {</span>
+<span class="fc" id="L409">            configUrl = getCheckstyleResource(filename);</span>
+        }
+        else {
+<span class="fc" id="L412">            configUrl = ClassLoader.getSystemResource(filename);</span>
+        }
+
+<span class="fc bfc" id="L415" title="All 2 branches covered.">        if (configUrl == null) {</span>
+<span class="fc" id="L416">            throw new CheckstyleException(UNABLE_TO_FIND_EXCEPTION_PREFIX + filename);</span>
+        }
+
+        final URI uri;
+        try {
+<span class="fc" id="L421">            uri = configUrl.toURI();</span>
+        }
+<span class="fc" id="L423">        catch (final URISyntaxException ex) {</span>
+<span class="fc" id="L424">            throw new CheckstyleException(UNABLE_TO_FIND_EXCEPTION_PREFIX + filename, ex);</span>
+<span class="fc" id="L425">        }</span>
+
+<span class="fc" id="L427">        return uri;</span>
+    }
+
+    /**
+     * Finds a resource with a given name in the Checkstyle resource bundle.
+     * This method is intended only for internal use in Checkstyle tests for
+     * easy mocking to gain 100% coverage.
+     *
+     * @param name name of the desired resource
+     * @return URI of the resource
+     */
+    public static URL getCheckstyleResource(String name) {
+<span class="fc" id="L439">        return CommonUtil.class.getResource(name);</span>
+    }
+
+    /**
+     * Puts part of line, which matches regexp into given template
+     * on positions $n where 'n' is number of matched part in line.
+     *
+     * @param template the string to expand.
+     * @param lineToPlaceInTemplate contains expression which should be placed into string.
+     * @param regexp expression to find in comment.
+     * @return the string, based on template filled with given lines
+     */
+    public static String fillTemplateWithStringsByRegexp(
+        String template, String lineToPlaceInTemplate, Pattern regexp) {
+<span class="fc" id="L453">        final Matcher matcher = regexp.matcher(lineToPlaceInTemplate);</span>
+<span class="fc" id="L454">        String result = template;</span>
+<span class="fc bfc" id="L455" title="All 2 branches covered.">        if (matcher.find()) {</span>
+<span class="fc bfc" id="L456" title="All 2 branches covered.">            for (int i = 0; i &lt;= matcher.groupCount(); i++) {</span>
+                // $n expands comment match like in Pattern.subst().
+<span class="fc" id="L458">                result = result.replaceAll(&quot;\\$&quot; + i, matcher.group(i));</span>
+            }
+        }
+<span class="fc" id="L461">        return result;</span>
+    }
+
+    /**
+     * Returns file name without extension.
+     * We do not use the method from Guava library to reduce Checkstyle's dependencies
+     * on external libraries.
+     *
+     * @param fullFilename file name with extension.
+     * @return file name without extension.
+     */
+    public static String getFileNameWithoutExtension(String fullFilename) {
+<span class="fc" id="L473">        final String fileName = new File(fullFilename).getName();</span>
+<span class="fc" id="L474">        final int dotIndex = fileName.lastIndexOf('.');</span>
+        final String fileNameWithoutExtension;
+<span class="fc bfc" id="L476" title="All 2 branches covered.">        if (dotIndex == -1) {</span>
+<span class="fc" id="L477">            fileNameWithoutExtension = fileName;</span>
+        }
+        else {
+<span class="fc" id="L480">            fileNameWithoutExtension = fileName.substring(0, dotIndex);</span>
+        }
+<span class="fc" id="L482">        return fileNameWithoutExtension;</span>
+    }
+
+    /**
+     * Returns file extension for the given file name
+     * or empty string if file does not have an extension.
+     * We do not use the method from Guava library to reduce Checkstyle's dependencies
+     * on external libraries.
+     *
+     * @param fileNameWithExtension file name with extension.
+     * @return file extension for the given file name
+     *         or empty string if file does not have an extension.
+     */
+    public static String getFileExtension(String fileNameWithExtension) {
+<span class="fc" id="L496">        final String fileName = Paths.get(fileNameWithExtension).toString();</span>
+<span class="fc" id="L497">        final int dotIndex = fileName.lastIndexOf('.');</span>
+        final String extension;
+<span class="fc bfc" id="L499" title="All 2 branches covered.">        if (dotIndex == -1) {</span>
+<span class="fc" id="L500">            extension = &quot;&quot;;</span>
+        }
+        else {
+<span class="fc" id="L503">            extension = fileName.substring(dotIndex + 1);</span>
+        }
+<span class="fc" id="L505">        return extension;</span>
+    }
+
+    /**
+     * Checks whether the given string is a valid identifier.
+     *
+     * @param str A string to check.
+     * @return true when the given string contains valid identifier.
+     */
+    public static boolean isIdentifier(String str) {
+<span class="fc bfc" id="L515" title="All 2 branches covered.">        boolean isIdentifier = !str.isEmpty();</span>
+
+<span class="fc bfc" id="L517" title="All 4 branches covered.">        for (int i = 0; isIdentifier &amp;&amp; i &lt; str.length(); i++) {</span>
+<span class="fc bfc" id="L518" title="All 2 branches covered.">            if (i == 0) {</span>
+<span class="fc" id="L519">                isIdentifier = Character.isJavaIdentifierStart(str.charAt(0));</span>
+            }
+            else {
+<span class="fc" id="L522">                isIdentifier = Character.isJavaIdentifierPart(str.charAt(i));</span>
+            }
+        }
+
+<span class="fc" id="L526">        return isIdentifier;</span>
+    }
+
+    /**
+     * Checks whether the given string is a valid name.
+     *
+     * @param str A string to check.
+     * @return true when the given string contains valid name.
+     */
+    public static boolean isName(String str) {
+<span class="fc" id="L536">        boolean isName = false;</span>
+
+<span class="fc" id="L538">        final String[] identifiers = str.split(&quot;\\.&quot;, -1);</span>
+<span class="fc bfc" id="L539" title="All 2 branches covered.">        for (String identifier : identifiers) {</span>
+<span class="fc" id="L540">            isName = isIdentifier(identifier);</span>
+<span class="fc bfc" id="L541" title="All 2 branches covered.">            if (!isName) {</span>
+<span class="fc" id="L542">                break;</span>
+            }
+        }
+
+<span class="fc" id="L546">        return isName;</span>
+    }
+
+    /**
+     * Checks if the value arg is blank by either being null,
+     * empty, or contains only whitespace characters.
+     *
+     * @param value A string to check.
+     * @return true if the arg is blank.
+     */
+    public static boolean isBlank(String value) {
+<span class="fc bfc" id="L557" title="All 2 branches covered.">        return Objects.isNull(value)</span>
+<span class="fc bfc" id="L558" title="All 2 branches covered.">                || indexOfNonWhitespace(value) &gt;= value.length();</span>
+    }
+
+    /**
+     * Method to find the index of the first non-whitespace character in a string.
+     *
+     * @param value the string to find the first index of a non-whitespace character for.
+     * @return the index of the first non-whitespace character.
+     */
+    public static int indexOfNonWhitespace(String value) {
+<span class="fc" id="L568">        final int length = value.length();</span>
+<span class="fc" id="L569">        int left = 0;</span>
+<span class="fc bfc" id="L570" title="All 2 branches covered.">        while (left &lt; length) {</span>
+<span class="fc" id="L571">            final int codePointAt = value.codePointAt(left);</span>
+<span class="fc bfc" id="L572" title="All 2 branches covered.">            if (!Character.isWhitespace(codePointAt)) {</span>
+<span class="fc" id="L573">                break;</span>
+            }
+<span class="fc" id="L575">            left += Character.charCount(codePointAt);</span>
+<span class="fc" id="L576">        }</span>
+<span class="fc" id="L577">        return left;</span>
+    }
+
+    /**
+     * Converts the Unicode code point at index {@code index} to it's UTF-16
+     * representation, then checks if the character is whitespace. Note that the given
+     * index {@code index} should correspond to the location of the character
+     * to check in the string, not in code points.
+     *
+     * @param codePoints the array of Unicode code points
+     * @param index the index of the character to check
+     * @return true if character at {@code index} is whitespace
+     */
+    public static boolean isCodePointWhitespace(int[] codePoints, int index) {
+        //  We only need to check the first member of a surrogate pair to verify that
+        //  it is not whitespace.
+<span class="fc" id="L593">        final char character = Character.toChars(codePoints[index])[0];</span>
+<span class="fc" id="L594">        return Character.isWhitespace(character);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

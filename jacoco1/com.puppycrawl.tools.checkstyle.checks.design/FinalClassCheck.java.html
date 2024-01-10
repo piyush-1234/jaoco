@@ -1,0 +1,608 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FinalClassCheck.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.checks.design</a> &gt; <span class="el_source">FinalClassCheck.java</span></div><h1>FinalClassCheck.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.checks.design;
+
+import java.util.ArrayDeque;
+import java.util.Comparator;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Function;
+import java.util.function.ToIntFunction;
+
+import com.puppycrawl.tools.checkstyle.FileStatefulCheck;
+import com.puppycrawl.tools.checkstyle.api.AbstractCheck;
+import com.puppycrawl.tools.checkstyle.api.DetailAST;
+import com.puppycrawl.tools.checkstyle.api.TokenTypes;
+import com.puppycrawl.tools.checkstyle.utils.CheckUtil;
+import com.puppycrawl.tools.checkstyle.utils.CommonUtil;
+import com.puppycrawl.tools.checkstyle.utils.ScopeUtil;
+import com.puppycrawl.tools.checkstyle.utils.TokenUtil;
+
+/**
+ * &lt;p&gt;
+ * Ensures that identifies classes that can be effectively declared as final are explicitly
+ * marked as final. The following are different types of classes that can be identified:
+ * &lt;/p&gt;
+ * &lt;ol&gt;
+ *   &lt;li&gt;
+ *       Private classes with no declared constructors.
+ *   &lt;/li&gt;
+ *   &lt;li&gt;
+ *       Classes with any modifier, and contains only private constructors.
+ *   &lt;/li&gt;
+ * &lt;/ol&gt;
+ * &lt;p&gt;
+ * Classes are skipped if:
+ * &lt;/p&gt;
+ * &lt;ol&gt;
+ *   &lt;li&gt;
+ *       Class is Super class of some Anonymous inner class.
+ *   &lt;/li&gt;
+ *   &lt;li&gt;
+ *       Class is extended by another class in the same file.
+ *   &lt;/li&gt;
+ * &lt;/ol&gt;
+ * &lt;p&gt;
+ * Parent is {@code com.puppycrawl.tools.checkstyle.TreeWalker}
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Violation Message Keys:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * {@code final.class}
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * @since 3.1
+ */
+@FileStatefulCheck
+<span class="fc" id="L80">public class FinalClassCheck</span>
+    extends AbstractCheck {
+
+    /**
+     * A key is pointing to the warning message text in &quot;messages.properties&quot;
+     * file.
+     */
+    public static final String MSG_KEY = &quot;final.class&quot;;
+
+    /**
+     * Character separate package names in qualified name of java class.
+     */
+    private static final String PACKAGE_SEPARATOR = &quot;.&quot;;
+
+    /** Keeps ClassDesc objects for all inner classes. */
+    private Map&lt;String, ClassDesc&gt; innerClasses;
+
+    /**
+     * Maps anonymous inner class's {@link TokenTypes#LITERAL_NEW} node to
+     * the outer type declaration's fully qualified name.
+     */
+    private Map&lt;DetailAST, String&gt; anonInnerClassToOuterTypeDecl;
+
+    /** Keeps TypeDeclarationDescription object for stack of declared type descriptions. */
+    private Deque&lt;TypeDeclarationDescription&gt; typeDeclarations;
+
+    /** Full qualified name of the package. */
+    private String packageName;
+
+    @Override
+    public int[] getDefaultTokens() {
+<span class="fc" id="L111">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+<span class="fc" id="L116">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getRequiredTokens() {
+<span class="fc" id="L121">        return new int[] {</span>
+            TokenTypes.ANNOTATION_DEF,
+            TokenTypes.CLASS_DEF,
+            TokenTypes.ENUM_DEF,
+            TokenTypes.INTERFACE_DEF,
+            TokenTypes.RECORD_DEF,
+            TokenTypes.CTOR_DEF,
+            TokenTypes.PACKAGE_DEF,
+            TokenTypes.LITERAL_NEW,
+        };
+    }
+
+    @Override
+    public void beginTree(DetailAST rootAST) {
+<span class="fc" id="L135">        typeDeclarations = new ArrayDeque&lt;&gt;();</span>
+<span class="fc" id="L136">        innerClasses = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L137">        anonInnerClassToOuterTypeDecl = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L138">        packageName = &quot;&quot;;</span>
+<span class="fc" id="L139">    }</span>
+
+    @Override
+    public void visitToken(DetailAST ast) {
+<span class="fc bfc" id="L143" title="All 6 branches covered.">        switch (ast.getType()) {</span>
+            case TokenTypes.PACKAGE_DEF:
+<span class="fc" id="L145">                packageName = CheckUtil.extractQualifiedName(ast.getFirstChild().getNextSibling());</span>
+<span class="fc" id="L146">                break;</span>
+
+            case TokenTypes.ANNOTATION_DEF:
+            case TokenTypes.ENUM_DEF:
+            case TokenTypes.INTERFACE_DEF:
+            case TokenTypes.RECORD_DEF:
+<span class="fc" id="L152">                final TypeDeclarationDescription description = new TypeDeclarationDescription(</span>
+<span class="fc" id="L153">                    extractQualifiedTypeName(ast), 0, ast);</span>
+<span class="fc" id="L154">                typeDeclarations.push(description);</span>
+<span class="fc" id="L155">                break;</span>
+
+            case TokenTypes.CLASS_DEF:
+<span class="fc" id="L158">                visitClass(ast);</span>
+<span class="fc" id="L159">                break;</span>
+
+            case TokenTypes.CTOR_DEF:
+<span class="fc" id="L162">                visitCtor(ast);</span>
+<span class="fc" id="L163">                break;</span>
+
+            case TokenTypes.LITERAL_NEW:
+<span class="fc bfc" id="L166" title="All 2 branches covered.">                if (ast.getFirstChild() != null</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">                        &amp;&amp; ast.getLastChild().getType() == TokenTypes.OBJBLOCK) {</span>
+<span class="fc" id="L168">                    anonInnerClassToOuterTypeDecl</span>
+<span class="fc" id="L169">                        .put(ast, typeDeclarations.peek().getQualifiedName());</span>
+                }
+                break;
+
+            default:
+<span class="fc" id="L174">                throw new IllegalStateException(ast.toString());</span>
+        }
+<span class="fc" id="L176">    }</span>
+
+    /**
+     * Called to process a type definition.
+     *
+     * @param ast the token to process
+     */
+    private void visitClass(DetailAST ast) {
+<span class="fc" id="L184">        final String qualifiedClassName = extractQualifiedTypeName(ast);</span>
+<span class="fc" id="L185">        final ClassDesc currClass = new ClassDesc(qualifiedClassName, typeDeclarations.size(), ast);</span>
+<span class="fc" id="L186">        typeDeclarations.push(currClass);</span>
+<span class="fc" id="L187">        innerClasses.put(qualifiedClassName, currClass);</span>
+<span class="fc" id="L188">    }</span>
+
+    /**
+     * Called to process a constructor definition.
+     *
+     * @param ast the token to process
+     */
+    private void visitCtor(DetailAST ast) {
+<span class="fc bfc" id="L196" title="All 4 branches covered.">        if (!ScopeUtil.isInEnumBlock(ast) &amp;&amp; !ScopeUtil.isInRecordBlock(ast)) {</span>
+<span class="fc" id="L197">            final DetailAST modifiers = ast.findFirstToken(TokenTypes.MODIFIERS);</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">            if (modifiers.findFirstToken(TokenTypes.LITERAL_PRIVATE) == null) {</span>
+                // Can be only of type ClassDesc, preceding if statements guarantee it.
+<span class="fc" id="L200">                final ClassDesc desc = (ClassDesc) typeDeclarations.getFirst();</span>
+<span class="fc" id="L201">                desc.registerNonPrivateCtor();</span>
+            }
+        }
+<span class="fc" id="L204">    }</span>
+
+    @Override
+    public void leaveToken(DetailAST ast) {
+<span class="fc bfc" id="L208" title="All 2 branches covered.">        if (TokenUtil.isTypeDeclaration(ast.getType())) {</span>
+<span class="fc" id="L209">            typeDeclarations.pop();</span>
+        }
+<span class="fc bfc" id="L211" title="All 2 branches covered.">        if (TokenUtil.isRootNode(ast.getParent())) {</span>
+<span class="fc" id="L212">            anonInnerClassToOuterTypeDecl.forEach(this::registerAnonymousInnerClassToSuperClass);</span>
+            // First pass: mark all classes that have derived inner classes
+<span class="fc" id="L214">            innerClasses.forEach(this::registerExtendedClass);</span>
+            // Second pass: report violation for all classes that should be declared as final
+<span class="fc" id="L216">            innerClasses.forEach((qualifiedClassName, classDesc) -&gt; {</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">                if (shouldBeDeclaredAsFinal(classDesc)) {</span>
+<span class="fc" id="L218">                    final String className = CommonUtil.baseClassName(qualifiedClassName);</span>
+<span class="fc" id="L219">                    log(classDesc.getTypeDeclarationAst(), MSG_KEY, className);</span>
+                }
+<span class="fc" id="L221">            });</span>
+        }
+<span class="fc" id="L223">    }</span>
+
+    /**
+     * Checks whether a class should be declared as final or not.
+     *
+     * @param classDesc description of the class
+     * @return true if given class should be declared as final otherwise false
+     */
+    private static boolean shouldBeDeclaredAsFinal(ClassDesc classDesc) {
+        final boolean shouldBeFinal;
+
+<span class="fc bfc" id="L234" title="All 2 branches covered.">        final boolean skipClass = classDesc.isDeclaredAsFinal()</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">                    || classDesc.isDeclaredAsAbstract()</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">                    || classDesc.isSuperClassOfAnonymousInnerClass()</span>
+<span class="fc bfc" id="L237" title="All 2 branches covered.">                    || classDesc.isWithNestedSubclass();</span>
+
+<span class="fc bfc" id="L239" title="All 2 branches covered.">        if (skipClass) {</span>
+<span class="fc" id="L240">            shouldBeFinal = false;</span>
+        }
+<span class="fc bfc" id="L242" title="All 2 branches covered.">        else if (classDesc.isHasDeclaredConstructor()) {</span>
+<span class="fc" id="L243">            shouldBeFinal = classDesc.isDeclaredAsPrivate();</span>
+        }
+        else {
+<span class="fc bfc" id="L246" title="All 2 branches covered.">            shouldBeFinal = !classDesc.isWithNonPrivateCtor();</span>
+        }
+<span class="fc" id="L248">        return shouldBeFinal;</span>
+    }
+
+    /**
+     * Register to outer super class of given classAst that
+     * given classAst is extending them.
+     *
+     * @param qualifiedClassName qualifies class name(with package) of the current class
+     * @param currentClass class which outer super class will be informed about nesting subclass
+     */
+    private void registerExtendedClass(String qualifiedClassName,
+                                       ClassDesc currentClass) {
+<span class="fc" id="L260">        final String superClassName = getSuperClassName(currentClass.getTypeDeclarationAst());</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">        if (superClassName != null) {</span>
+<span class="fc" id="L262">            final ToIntFunction&lt;ClassDesc&gt; nestedClassCountProvider = classDesc -&gt; {</span>
+<span class="fc" id="L263">                return CheckUtil.typeDeclarationNameMatchingCount(qualifiedClassName,</span>
+<span class="fc" id="L264">                                                                  classDesc.getQualifiedName());</span>
+            };
+<span class="fc" id="L266">            getNearestClassWithSameName(superClassName, nestedClassCountProvider)</span>
+<span class="fc" id="L267">                .or(() -&gt; Optional.ofNullable(innerClasses.get(superClassName)))</span>
+<span class="fc" id="L268">                .ifPresent(ClassDesc::registerNestedSubclass);</span>
+        }
+<span class="fc" id="L270">    }</span>
+
+    /**
+     * Register to the super class of anonymous inner class that the given class is instantiated
+     * by an anonymous inner class.
+     *
+     * @param literalNewAst ast node of {@link TokenTypes#LITERAL_NEW} representing anonymous inner
+     *                      class
+     * @param outerTypeDeclName Fully qualified name of the outer type declaration of anonymous
+     *                          inner class
+     */
+    private void registerAnonymousInnerClassToSuperClass(DetailAST literalNewAst,
+                                                         String outerTypeDeclName) {
+<span class="fc" id="L283">        final String superClassName = CheckUtil.getShortNameOfAnonInnerClass(literalNewAst);</span>
+
+<span class="fc" id="L285">        final ToIntFunction&lt;ClassDesc&gt; anonClassCountProvider = classDesc -&gt; {</span>
+<span class="fc" id="L286">            return getAnonSuperTypeMatchingCount(outerTypeDeclName, classDesc.getQualifiedName());</span>
+        };
+<span class="fc" id="L288">        getNearestClassWithSameName(superClassName, anonClassCountProvider)</span>
+<span class="fc" id="L289">            .or(() -&gt; Optional.ofNullable(innerClasses.get(superClassName)))</span>
+<span class="fc" id="L290">            .ifPresent(ClassDesc::registerSuperClassOfAnonymousInnerClass);</span>
+<span class="fc" id="L291">    }</span>
+
+    /**
+     * Get the nearest class with same name.
+     *
+     * &lt;p&gt;The parameter {@code countProvider} exists because if the class being searched is the
+     * super class of anonymous inner class, the rules of evaluation are a bit different,
+     * consider the following example-
+     * &lt;pre&gt;
+     * {@code
+     * public class Main {
+     *     static class One {
+     *         static class Two {
+     *         }
+     *     }
+     *
+     *     class Three {
+     *         One.Two object = new One.Two() { // Object of Main.Three.One.Two
+     *                                          // and not of Main.One.Two
+     *         };
+     *
+     *         static class One {
+     *             static class Two {
+     *             }
+     *         }
+     *     }
+     * }
+     * }
+     * &lt;/pre&gt;
+     * If the {@link Function} {@code countProvider} hadn't used
+     * {@link FinalClassCheck#getAnonSuperTypeMatchingCount} to
+     * calculate the matching count then the logic would have falsely evaluated
+     * {@code Main.One.Two} to be the super class of the anonymous inner class.
+     *
+     * @param className name of the class
+     * @param countProvider the function to apply to calculate the name matching count
+     * @return {@link Optional} of {@link ClassDesc} object of the nearest class with the same name.
+     * @noinspection CallToStringConcatCanBeReplacedByOperator
+     * @noinspectionreason CallToStringConcatCanBeReplacedByOperator - operator causes
+     *      pitest to fail
+     */
+    private Optional&lt;ClassDesc&gt; getNearestClassWithSameName(String className,
+        ToIntFunction&lt;ClassDesc&gt; countProvider) {
+<span class="fc" id="L334">        final String dotAndClassName = PACKAGE_SEPARATOR.concat(className);</span>
+<span class="fc" id="L335">        final Comparator&lt;ClassDesc&gt; longestMatch = Comparator.comparingInt(countProvider);</span>
+<span class="fc" id="L336">        return innerClasses.entrySet().stream()</span>
+<span class="fc" id="L337">                .filter(entry -&gt; entry.getKey().endsWith(dotAndClassName))</span>
+<span class="fc" id="L338">                .map(Map.Entry::getValue)</span>
+<span class="fc" id="L339">                .min(longestMatch.reversed().thenComparingInt(ClassDesc::getDepth));</span>
+    }
+
+    /**
+     * Extract the qualified type declaration name from given type declaration Ast.
+     *
+     * @param typeDeclarationAst type declaration for which qualified name is being fetched
+     * @return qualified name of a type declaration
+     */
+    private String extractQualifiedTypeName(DetailAST typeDeclarationAst) {
+<span class="fc" id="L349">        final String className = typeDeclarationAst.findFirstToken(TokenTypes.IDENT).getText();</span>
+<span class="fc" id="L350">        String outerTypeDeclarationQualifiedName = null;</span>
+<span class="fc bfc" id="L351" title="All 2 branches covered.">        if (!typeDeclarations.isEmpty()) {</span>
+<span class="fc" id="L352">            outerTypeDeclarationQualifiedName = typeDeclarations.peek().getQualifiedName();</span>
+        }
+<span class="fc" id="L354">        return CheckUtil.getQualifiedTypeDeclarationName(packageName,</span>
+                                                         outerTypeDeclarationQualifiedName,
+                                                         className);
+    }
+
+    /**
+     * Get super class name of given class.
+     *
+     * @param classAst class
+     * @return super class name or null if super class is not specified
+     */
+    private static String getSuperClassName(DetailAST classAst) {
+<span class="fc" id="L366">        String superClassName = null;</span>
+<span class="fc" id="L367">        final DetailAST classExtend = classAst.findFirstToken(TokenTypes.EXTENDS_CLAUSE);</span>
+<span class="fc bfc" id="L368" title="All 2 branches covered.">        if (classExtend != null) {</span>
+<span class="fc" id="L369">            superClassName = CheckUtil.extractQualifiedName(classExtend.getFirstChild());</span>
+        }
+<span class="fc" id="L371">        return superClassName;</span>
+    }
+
+    /**
+     * Calculates and returns the type declaration matching count when {@code classToBeMatched} is
+     * considered to be super class of an anonymous inner class.
+     *
+     * &lt;p&gt;
+     * Suppose our pattern class is {@code Main.ClassOne} and class to be matched is
+     * {@code Main.ClassOne.ClassTwo.ClassThree} then type declaration name matching count would
+     * be calculated by comparing every character, and updating main counter when we hit &quot;.&quot; or
+     * when it is the last character of the pattern class and certain conditions are met. This is
+     * done so that matching count is 13 instead of 5. This is due to the fact that pattern class
+     * can contain anonymous inner class object of a nested class which isn't true in case of
+     * extending classes as you can't extend nested classes.
+     * &lt;/p&gt;
+     *
+     * @param patternTypeDeclaration type declaration against which the given type declaration has
+     *                               to be matched
+     * @param typeDeclarationToBeMatched type declaration to be matched
+     * @return type declaration matching count
+     */
+    private static int getAnonSuperTypeMatchingCount(String patternTypeDeclaration,
+                                                    String typeDeclarationToBeMatched) {
+<span class="fc" id="L395">        final int typeDeclarationToBeMatchedLength = typeDeclarationToBeMatched.length();</span>
+<span class="fc" id="L396">        final int minLength = Math</span>
+<span class="fc" id="L397">            .min(typeDeclarationToBeMatchedLength, patternTypeDeclaration.length());</span>
+<span class="fc" id="L398">        final char packageSeparator = PACKAGE_SEPARATOR.charAt(0);</span>
+<span class="fc bfc" id="L399" title="All 2 branches covered.">        final boolean shouldCountBeUpdatedAtLastCharacter =</span>
+            typeDeclarationToBeMatchedLength &gt; minLength
+<span class="fc bfc" id="L401" title="All 2 branches covered.">                &amp;&amp; typeDeclarationToBeMatched.charAt(minLength) == packageSeparator;</span>
+
+<span class="fc" id="L403">        int result = 0;</span>
+<span class="fc" id="L404">        for (int idx = 0;</span>
+             idx &lt; minLength
+<span class="fc bfc" id="L406" title="All 4 branches covered.">                 &amp;&amp; patternTypeDeclaration.charAt(idx) == typeDeclarationToBeMatched.charAt(idx);</span>
+<span class="fc" id="L407">             idx++) {</span>
+
+<span class="fc bfc" id="L409" title="All 4 branches covered.">            if (idx == minLength - 1 &amp;&amp; shouldCountBeUpdatedAtLastCharacter</span>
+<span class="fc bfc" id="L410" title="All 2 branches covered.">                || patternTypeDeclaration.charAt(idx) == packageSeparator) {</span>
+<span class="fc" id="L411">                result = idx;</span>
+            }
+        }
+<span class="fc" id="L414">        return result;</span>
+    }
+
+    /**
+     * Maintains information about the type of declaration.
+     * Any ast node of type {@link TokenTypes#CLASS_DEF} or {@link TokenTypes#INTERFACE_DEF}
+     * or {@link TokenTypes#ENUM_DEF} or {@link TokenTypes#ANNOTATION_DEF}
+     * or {@link TokenTypes#RECORD_DEF} is considered as a type declaration.
+     * It does not maintain information about classes, a subclass called {@link ClassDesc}
+     * does that job.
+     */
+    private static class TypeDeclarationDescription {
+
+        /**
+         * Complete type declaration name with package name and outer type declaration name.
+         */
+        private final String qualifiedName;
+
+        /**
+         * Depth of nesting of type declaration.
+         */
+        private final int depth;
+
+        /**
+         * Type declaration ast node.
+         */
+        private final DetailAST typeDeclarationAst;
+
+        /**
+         * Create an instance of TypeDeclarationDescription.
+         *
+         * @param qualifiedName Complete type declaration name with package name and outer type
+         *                      declaration name.
+         * @param depth Depth of nesting of type declaration
+         * @param typeDeclarationAst Type declaration ast node
+         */
+        private TypeDeclarationDescription(String qualifiedName, int depth,
+<span class="fc" id="L451">                                          DetailAST typeDeclarationAst) {</span>
+<span class="fc" id="L452">            this.qualifiedName = qualifiedName;</span>
+<span class="fc" id="L453">            this.depth = depth;</span>
+<span class="fc" id="L454">            this.typeDeclarationAst = typeDeclarationAst;</span>
+<span class="fc" id="L455">        }</span>
+
+        /**
+         * Get the complete type declaration name i.e. type declaration name with package name
+         * and outer type declaration name.
+         *
+         * @return qualified class name
+         */
+        protected String getQualifiedName() {
+<span class="fc" id="L464">            return qualifiedName;</span>
+        }
+
+        /**
+         * Get the depth of type declaration.
+         *
+         * @return the depth of nesting of type declaration
+         */
+        protected int getDepth() {
+<span class="fc" id="L473">            return depth;</span>
+        }
+
+        /**
+         * Get the type declaration ast node.
+         *
+         * @return ast node of the type declaration
+         */
+        protected DetailAST getTypeDeclarationAst() {
+<span class="fc" id="L482">            return typeDeclarationAst;</span>
+        }
+    }
+
+    /**
+     * Maintains information about the class.
+     */
+    private static final class ClassDesc extends TypeDeclarationDescription {
+
+        /** Is class declared as final. */
+        private final boolean declaredAsFinal;
+
+        /** Is class declared as abstract. */
+        private final boolean declaredAsAbstract;
+
+        /** Is class contains private modifier. */
+        private final boolean declaredAsPrivate;
+
+        /** Does class have implicit constructor. */
+        private final boolean hasDeclaredConstructor;
+
+        /** Does class have non-private ctors. */
+        private boolean withNonPrivateCtor;
+
+        /** Does class have nested subclass. */
+        private boolean withNestedSubclass;
+
+        /** Whether the class is the super class of an anonymous inner class. */
+        private boolean superClassOfAnonymousInnerClass;
+
+        /**
+         *  Create a new ClassDesc instance.
+         *
+         *  @param qualifiedName qualified class name(with package)
+         *  @param depth class nesting level
+         *  @param classAst classAst node
+         */
+        private ClassDesc(String qualifiedName, int depth, DetailAST classAst) {
+<span class="fc" id="L520">            super(qualifiedName, depth, classAst);</span>
+<span class="fc" id="L521">            final DetailAST modifiers = classAst.findFirstToken(TokenTypes.MODIFIERS);</span>
+<span class="fc bfc" id="L522" title="All 2 branches covered.">            declaredAsFinal = modifiers.findFirstToken(TokenTypes.FINAL) != null;</span>
+<span class="fc bfc" id="L523" title="All 2 branches covered.">            declaredAsAbstract = modifiers.findFirstToken(TokenTypes.ABSTRACT) != null;</span>
+<span class="fc bfc" id="L524" title="All 2 branches covered.">            declaredAsPrivate = modifiers.findFirstToken(TokenTypes.LITERAL_PRIVATE) != null;</span>
+<span class="fc" id="L525">            hasDeclaredConstructor =</span>
+<span class="fc bfc" id="L526" title="All 2 branches covered.">                    classAst.getLastChild().findFirstToken(TokenTypes.CTOR_DEF) == null;</span>
+<span class="fc" id="L527">        }</span>
+
+        /** Adds non-private ctor. */
+        private void registerNonPrivateCtor() {
+<span class="fc" id="L531">            withNonPrivateCtor = true;</span>
+<span class="fc" id="L532">        }</span>
+
+        /** Adds nested subclass. */
+        private void registerNestedSubclass() {
+<span class="fc" id="L536">            withNestedSubclass = true;</span>
+<span class="fc" id="L537">        }</span>
+
+        /** Adds anonymous inner class. */
+        private void registerSuperClassOfAnonymousInnerClass() {
+<span class="fc" id="L541">            superClassOfAnonymousInnerClass = true;</span>
+<span class="fc" id="L542">        }</span>
+
+        /**
+         *  Does class have non-private ctors.
+         *
+         *  @return true if class has non-private ctors
+         */
+        private boolean isWithNonPrivateCtor() {
+<span class="fc" id="L550">            return withNonPrivateCtor;</span>
+        }
+
+        /**
+         * Does class have nested subclass.
+         *
+         * @return true if class has nested subclass
+         */
+        private boolean isWithNestedSubclass() {
+<span class="fc" id="L559">            return withNestedSubclass;</span>
+        }
+
+        /**
+         *  Is class declared as final.
+         *
+         *  @return true if class is declared as final
+         */
+        private boolean isDeclaredAsFinal() {
+<span class="fc" id="L568">            return declaredAsFinal;</span>
+        }
+
+        /**
+         *  Is class declared as abstract.
+         *
+         *  @return true if class is declared as final
+         */
+        private boolean isDeclaredAsAbstract() {
+<span class="fc" id="L577">            return declaredAsAbstract;</span>
+        }
+
+        /**
+         * Whether the class is the super class of an anonymous inner class.
+         *
+         * @return {@code true} if the class is the super class of an anonymous inner class.
+         */
+        private boolean isSuperClassOfAnonymousInnerClass() {
+<span class="fc" id="L586">            return superClassOfAnonymousInnerClass;</span>
+        }
+
+        /**
+         * Does class have implicit constructor.
+         *
+         * @return true if class have implicit constructor
+         */
+        private boolean isHasDeclaredConstructor() {
+<span class="fc" id="L595">            return hasDeclaredConstructor;</span>
+        }
+
+        /**
+         * Does class is private.
+         *
+         * @return true if class is private
+         */
+        private boolean isDeclaredAsPrivate() {
+<span class="fc" id="L604">            return declaredAsPrivate;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

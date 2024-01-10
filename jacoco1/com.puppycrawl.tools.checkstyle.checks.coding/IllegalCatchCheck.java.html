@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IllegalCatchCheck.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.checks.coding</a> &gt; <span class="el_source">IllegalCatchCheck.java</span></div><h1>IllegalCatchCheck.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.checks.coding;
+
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import com.puppycrawl.tools.checkstyle.StatelessCheck;
+import com.puppycrawl.tools.checkstyle.api.AbstractCheck;
+import com.puppycrawl.tools.checkstyle.api.DetailAST;
+import com.puppycrawl.tools.checkstyle.api.FullIdent;
+import com.puppycrawl.tools.checkstyle.api.TokenTypes;
+import com.puppycrawl.tools.checkstyle.utils.CheckUtil;
+
+/**
+ * &lt;p&gt;
+ * Checks that certain exception types do not appear in a {@code catch} statement.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Rationale: catching {@code java.lang.Exception}, {@code java.lang.Error} or
+ * {@code java.lang.RuntimeException} is almost never acceptable.
+ * Novice developers often simply catch Exception in an attempt to handle
+ * multiple exception classes. This unfortunately leads to code that inadvertently
+ * catches {@code NullPointerException}, {@code OutOfMemoryError}, etc.
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * Property {@code illegalClassNames} - Specify exception class names to reject.
+ * Type is {@code java.lang.String[]}.
+ * Default value is {@code Error, Exception, RuntimeException, Throwable, java.lang.Error,
+ * java.lang.Exception, java.lang.RuntimeException, java.lang.Throwable}.
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Parent is {@code com.puppycrawl.tools.checkstyle.TreeWalker}
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Violation Message Keys:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * {@code illegal.catch}
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * @since 3.2
+ */
+@StatelessCheck
+<span class="fc" id="L68">public final class IllegalCatchCheck extends AbstractCheck {</span>
+
+    /**
+     * A key is pointing to the warning message text in &quot;messages.properties&quot;
+     * file.
+     */
+    public static final String MSG_KEY = &quot;illegal.catch&quot;;
+
+    /** Specify exception class names to reject. */
+<span class="fc" id="L77">    private final Set&lt;String&gt; illegalClassNames = Arrays.stream(new String[] {&quot;Exception&quot;, &quot;Error&quot;,</span>
+        &quot;RuntimeException&quot;, &quot;Throwable&quot;, &quot;java.lang.Error&quot;, &quot;java.lang.Exception&quot;,
+        &quot;java.lang.RuntimeException&quot;, &quot;java.lang.Throwable&quot;, })
+<span class="fc" id="L80">            .collect(Collectors.toCollection(HashSet::new));</span>
+
+    /**
+     * Setter to specify exception class names to reject.
+     *
+     * @param classNames
+     *            array of illegal exception classes
+     * @since 3.2
+     */
+    public void setIllegalClassNames(final String... classNames) {
+<span class="fc" id="L90">        illegalClassNames.clear();</span>
+<span class="fc" id="L91">        illegalClassNames.addAll(</span>
+<span class="fc" id="L92">                CheckUtil.parseClassNames(classNames));</span>
+<span class="fc" id="L93">    }</span>
+
+    @Override
+    public int[] getDefaultTokens() {
+<span class="fc" id="L97">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getRequiredTokens() {
+<span class="fc" id="L102">        return new int[] {TokenTypes.LITERAL_CATCH};</span>
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+<span class="fc" id="L107">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public void visitToken(DetailAST detailAST) {
+<span class="fc" id="L112">        final DetailAST parameterDef =</span>
+<span class="fc" id="L113">            detailAST.findFirstToken(TokenTypes.PARAMETER_DEF);</span>
+<span class="fc" id="L114">        final DetailAST excTypeParent =</span>
+<span class="fc" id="L115">                parameterDef.findFirstToken(TokenTypes.TYPE);</span>
+
+<span class="fc" id="L117">        DetailAST currentNode = excTypeParent.getFirstChild();</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        while (currentNode != null) {</span>
+<span class="fc" id="L119">            final FullIdent ident = FullIdent.createFullIdent(currentNode);</span>
+<span class="fc" id="L120">            final String identText = ident.getText();</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            if (illegalClassNames.contains(identText)) {</span>
+<span class="fc" id="L122">                log(detailAST, MSG_KEY, identText);</span>
+            }
+<span class="fc" id="L124">            currentNode = currentNode.getNextSibling();</span>
+<span class="fc" id="L125">        }</span>
+<span class="fc" id="L126">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

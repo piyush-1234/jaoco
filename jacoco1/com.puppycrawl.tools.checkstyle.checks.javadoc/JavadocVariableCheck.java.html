@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JavadocVariableCheck.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.checks.javadoc</a> &gt; <span class="el_source">JavadocVariableCheck.java</span></div><h1>JavadocVariableCheck.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.checks.javadoc;
+
+import java.util.regex.Pattern;
+
+import com.puppycrawl.tools.checkstyle.StatelessCheck;
+import com.puppycrawl.tools.checkstyle.api.AbstractCheck;
+import com.puppycrawl.tools.checkstyle.api.DetailAST;
+import com.puppycrawl.tools.checkstyle.api.FileContents;
+import com.puppycrawl.tools.checkstyle.api.Scope;
+import com.puppycrawl.tools.checkstyle.api.TextBlock;
+import com.puppycrawl.tools.checkstyle.api.TokenTypes;
+import com.puppycrawl.tools.checkstyle.utils.ScopeUtil;
+
+/**
+ * &lt;p&gt;
+ * Checks that a variable has a Javadoc comment. Ignores {@code serialVersionUID} fields.
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * Property {@code excludeScope} - Specify the visibility scope where Javadoc
+ * comments are not checked.
+ * Type is {@code com.puppycrawl.tools.checkstyle.api.Scope}.
+ * Default value is {@code null}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code ignoreNamePattern} - Specify the regexp to define variable names to ignore.
+ * Type is {@code java.util.regex.Pattern}.
+ * Default value is {@code null}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code scope} - Specify the visibility scope where Javadoc comments are checked.
+ * Type is {@code com.puppycrawl.tools.checkstyle.api.Scope}.
+ * Default value is {@code private}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code tokens} - tokens to check
+ * Type is {@code java.lang.String[]}.
+ * Validation type is {@code tokenSet}.
+ * Default value is:
+ * &lt;a href=&quot;https://checkstyle.org/apidocs/com/puppycrawl/tools/checkstyle/api/TokenTypes.html#ENUM_CONSTANT_DEF&quot;&gt;
+ * ENUM_CONSTANT_DEF&lt;/a&gt;.
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Parent is {@code com.puppycrawl.tools.checkstyle.TreeWalker}
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Violation Message Keys:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * {@code javadoc.missing}
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * @since 3.0
+ */
+@StatelessCheck
+<span class="fc" id="L78">public class JavadocVariableCheck</span>
+    extends AbstractCheck {
+
+    /**
+     * A key is pointing to the warning message text in &quot;messages.properties&quot;
+     * file.
+     */
+    public static final String MSG_JAVADOC_MISSING = &quot;javadoc.missing&quot;;
+
+    /** Specify the visibility scope where Javadoc comments are checked. */
+<span class="fc" id="L88">    private Scope scope = Scope.PRIVATE;</span>
+
+    /** Specify the visibility scope where Javadoc comments are not checked. */
+    private Scope excludeScope;
+
+    /** Specify the regexp to define variable names to ignore. */
+    private Pattern ignoreNamePattern;
+
+    /**
+     * Setter to specify the visibility scope where Javadoc comments are checked.
+     *
+     * @param scope a scope.
+     * @since 3.0
+     */
+    public void setScope(Scope scope) {
+<span class="fc" id="L103">        this.scope = scope;</span>
+<span class="fc" id="L104">    }</span>
+
+    /**
+     * Setter to specify the visibility scope where Javadoc comments are not checked.
+     *
+     * @param excludeScope a scope.
+     * @since 3.4
+     */
+    public void setExcludeScope(Scope excludeScope) {
+<span class="fc" id="L113">        this.excludeScope = excludeScope;</span>
+<span class="fc" id="L114">    }</span>
+
+    /**
+     * Setter to specify the regexp to define variable names to ignore.
+     *
+     * @param pattern a pattern.
+     * @since 5.8
+     */
+    public void setIgnoreNamePattern(Pattern pattern) {
+<span class="fc" id="L123">        ignoreNamePattern = pattern;</span>
+<span class="fc" id="L124">    }</span>
+
+    @Override
+    public int[] getDefaultTokens() {
+<span class="fc" id="L128">        return getAcceptableTokens();</span>
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+<span class="fc" id="L133">        return new int[] {</span>
+            TokenTypes.VARIABLE_DEF,
+            TokenTypes.ENUM_CONSTANT_DEF,
+        };
+    }
+
+    /*
+     * Skipping enum values is requested.
+     * Checkstyle's issue #1669: https://github.com/checkstyle/checkstyle/issues/1669
+     */
+    @Override
+    public int[] getRequiredTokens() {
+<span class="fc" id="L145">        return new int[] {</span>
+            TokenTypes.VARIABLE_DEF,
+        };
+    }
+
+    // suppress deprecation until https://github.com/checkstyle/checkstyle/issues/11166
+    @SuppressWarnings(&quot;deprecation&quot;)
+    @Override
+    public void visitToken(DetailAST ast) {
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        if (shouldCheck(ast)) {</span>
+<span class="fc" id="L155">            final FileContents contents = getFileContents();</span>
+<span class="fc" id="L156">            final TextBlock textBlock =</span>
+<span class="fc" id="L157">                contents.getJavadocBefore(ast.getLineNo());</span>
+
+<span class="fc bfc" id="L159" title="All 2 branches covered.">            if (textBlock == null) {</span>
+<span class="fc" id="L160">                log(ast, MSG_JAVADOC_MISSING);</span>
+            }
+        }
+<span class="fc" id="L163">    }</span>
+
+    /**
+     * Decides whether the variable name of an AST is in the ignore list.
+     *
+     * @param ast the AST to check
+     * @return true if the variable name of ast is in the ignore list.
+     */
+    private boolean isIgnored(DetailAST ast) {
+<span class="fc" id="L172">        final String name = ast.findFirstToken(TokenTypes.IDENT).getText();</span>
+<span class="fc bfc" id="L173" title="All 4 branches covered.">        return ignoreNamePattern != null &amp;&amp; ignoreNamePattern.matcher(name).matches()</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">            || &quot;serialVersionUID&quot;.equals(name);</span>
+    }
+
+    /**
+     * Whether we should check this node.
+     *
+     * @param ast a given node.
+     * @return whether we should check a given node.
+     */
+    private boolean shouldCheck(final DetailAST ast) {
+<span class="fc" id="L184">        boolean result = false;</span>
+<span class="fc bfc" id="L185" title="All 4 branches covered.">        if (!ScopeUtil.isInCodeBlock(ast) &amp;&amp; !isIgnored(ast)) {</span>
+<span class="fc" id="L186">            final Scope customScope = ScopeUtil.getScope(ast);</span>
+<span class="fc" id="L187">            final Scope surroundingScope = ScopeUtil.getSurroundingScope(ast);</span>
+<span class="fc bfc" id="L188" title="All 6 branches covered.">            result = customScope.isIn(scope) &amp;&amp; surroundingScope.isIn(scope)</span>
+                &amp;&amp; (excludeScope == null
+<span class="fc bfc" id="L190" title="All 2 branches covered.">                    || !customScope.isIn(excludeScope)</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">                    || !surroundingScope.isIn(excludeScope));</span>
+        }
+<span class="fc" id="L193">        return result;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

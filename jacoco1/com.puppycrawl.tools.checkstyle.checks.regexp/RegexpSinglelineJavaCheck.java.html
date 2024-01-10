@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RegexpSinglelineJavaCheck.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.checks.regexp</a> &gt; <span class="el_source">RegexpSinglelineJavaCheck.java</span></div><h1>RegexpSinglelineJavaCheck.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.checks.regexp;
+
+import com.puppycrawl.tools.checkstyle.PropertyType;
+import com.puppycrawl.tools.checkstyle.StatelessCheck;
+import com.puppycrawl.tools.checkstyle.XdocsPropertyType;
+import com.puppycrawl.tools.checkstyle.api.AbstractCheck;
+import com.puppycrawl.tools.checkstyle.api.DetailAST;
+import com.puppycrawl.tools.checkstyle.utils.CommonUtil;
+
+/**
+ * &lt;p&gt;
+ * Checks that a specified pattern matches a single-line in Java files.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class is variation on
+ * &lt;a href=&quot;https://checkstyle.org/checks/regexp/regexpsingleline.html#RegexpSingleline&quot;&gt;
+ * RegexpSingleline&lt;/a&gt;
+ * for detecting single-lines that match a supplied regular expression in Java files.
+ * It supports suppressing matches in Java comments.
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * Property {@code format} - Specify the format of the regular expression to match.
+ * Type is {@code java.util.regex.Pattern}.
+ * Default value is {@code &quot;$.&quot;}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code ignoreCase} - Control whether to ignore case when searching.
+ * Type is {@code boolean}.
+ * Default value is {@code false}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code ignoreComments} - Control whether to ignore text in comments when searching.
+ * Type is {@code boolean}.
+ * Default value is {@code false}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code maximum} - Specify the maximum number of matches required in each file.
+ * Type is {@code int}.
+ * Default value is {@code 0}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code message} - Specify the message which is used to notify about
+ * violations, if empty then default (hard-coded) message is used.
+ * Type is {@code java.lang.String}.
+ * Default value is {@code null}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code minimum} - Specify the minimum number of matches required in each file.
+ * Type is {@code int}.
+ * Default value is {@code 0}.
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Parent is {@code com.puppycrawl.tools.checkstyle.TreeWalker}
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Violation Message Keys:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * {@code regexp.exceeded}
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * {@code regexp.minimum}
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * @since 6.0
+ */
+@StatelessCheck
+<span class="fc" id="L91">public class RegexpSinglelineJavaCheck extends AbstractCheck {</span>
+
+    /** Specify the format of the regular expression to match. */
+<span class="fc" id="L94">    @XdocsPropertyType(PropertyType.PATTERN)</span>
+    private String format = &quot;$.&quot;;
+    /**
+     * Specify the message which is used to notify about violations,
+     * if empty then default (hard-coded) message is used.
+     */
+    private String message;
+    /** Specify the minimum number of matches required in each file. */
+    private int minimum;
+    /** Specify the maximum number of matches required in each file. */
+    private int maximum;
+    /** Control whether to ignore case when searching. */
+    private boolean ignoreCase;
+    /** Control whether to ignore text in comments when searching. */
+    private boolean ignoreComments;
+
+    @Override
+    public int[] getDefaultTokens() {
+<span class="fc" id="L112">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+<span class="fc" id="L117">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getRequiredTokens() {
+<span class="fc" id="L122">        return CommonUtil.EMPTY_INT_ARRAY;</span>
+    }
+
+    // suppress deprecation until https://github.com/checkstyle/checkstyle/issues/11166
+    @SuppressWarnings(&quot;deprecation&quot;)
+    @Override
+    public void beginTree(DetailAST rootAST) {
+<span class="fc" id="L129">        MatchSuppressor suppressor = null;</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        if (ignoreComments) {</span>
+<span class="fc" id="L131">            suppressor = new CommentSuppressor(getFileContents());</span>
+        }
+
+<span class="fc" id="L134">        final DetectorOptions options = DetectorOptions.newBuilder()</span>
+<span class="fc" id="L135">            .reporter(this)</span>
+<span class="fc" id="L136">            .suppressor(suppressor)</span>
+<span class="fc" id="L137">            .format(format)</span>
+<span class="fc" id="L138">            .message(message)</span>
+<span class="fc" id="L139">            .minimum(minimum)</span>
+<span class="fc" id="L140">            .maximum(maximum)</span>
+<span class="fc" id="L141">            .ignoreCase(ignoreCase)</span>
+<span class="fc" id="L142">            .build();</span>
+<span class="fc" id="L143">        final SinglelineDetector detector = new SinglelineDetector(options);</span>
+<span class="fc" id="L144">        detector.processLines(getFileContents().getText());</span>
+<span class="fc" id="L145">    }</span>
+
+    /**
+     * Setter to specify the format of the regular expression to match.
+     *
+     * @param format the format of the regular expression to match.
+     * @since 5.0
+     */
+    public void setFormat(String format) {
+<span class="fc" id="L154">        this.format = format;</span>
+<span class="fc" id="L155">    }</span>
+
+    /**
+     * Setter to specify the message which is used to notify about violations,
+     * if empty then default (hard-coded) message is used.
+     *
+     * @param message the message to report for a match.
+     * @since 6.0
+     */
+    public void setMessage(String message) {
+<span class="fc" id="L165">        this.message = message;</span>
+<span class="fc" id="L166">    }</span>
+
+    /**
+     * Setter to specify the minimum number of matches required in each file.
+     *
+     * @param minimum the minimum number of matches required in each file.
+     * @since 5.0
+     */
+    public void setMinimum(int minimum) {
+<span class="fc" id="L175">        this.minimum = minimum;</span>
+<span class="fc" id="L176">    }</span>
+
+    /**
+     * Setter to specify the maximum number of matches required in each file.
+     *
+     * @param maximum the maximum number of matches required in each file.
+     * @since 5.0
+     */
+    public void setMaximum(int maximum) {
+<span class="fc" id="L185">        this.maximum = maximum;</span>
+<span class="fc" id="L186">    }</span>
+
+    /**
+     * Setter to control whether to ignore case when searching.
+     *
+     * @param ignoreCase whether to ignore case when searching.
+     * @since 5.0
+     */
+    public void setIgnoreCase(boolean ignoreCase) {
+<span class="fc" id="L195">        this.ignoreCase = ignoreCase;</span>
+<span class="fc" id="L196">    }</span>
+
+    /**
+     * Setter to control whether to ignore text in comments when searching.
+     *
+     * @param ignore whether to ignore text in comments when searching.
+     * @since 5.0
+     */
+    public void setIgnoreComments(boolean ignore) {
+<span class="fc" id="L205">        ignoreComments = ignore;</span>
+<span class="fc" id="L206">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

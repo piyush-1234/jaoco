@@ -1,0 +1,1415 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SiteUtil.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.site</a> &gt; <span class="el_source">SiteUtil.java</span></div><h1>SiteUtil.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.site;
+
+import java.beans.PropertyDescriptor;
+import java.io.File;
+import java.io.IOException;
+import java.lang.reflect.Array;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.ParameterizedType;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.BitSet;
+import java.util.Collection;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
+
+import javax.annotation.Nullable;
+
+import org.apache.commons.beanutils.PropertyUtils;
+import org.apache.maven.doxia.macro.MacroExecutionException;
+
+import com.google.common.collect.Lists;
+import com.puppycrawl.tools.checkstyle.Checker;
+import com.puppycrawl.tools.checkstyle.DefaultConfiguration;
+import com.puppycrawl.tools.checkstyle.ModuleFactory;
+import com.puppycrawl.tools.checkstyle.PackageNamesLoader;
+import com.puppycrawl.tools.checkstyle.PackageObjectFactory;
+import com.puppycrawl.tools.checkstyle.PropertyCacheFile;
+import com.puppycrawl.tools.checkstyle.TreeWalker;
+import com.puppycrawl.tools.checkstyle.TreeWalkerFilter;
+import com.puppycrawl.tools.checkstyle.XdocsPropertyType;
+import com.puppycrawl.tools.checkstyle.api.AbstractCheck;
+import com.puppycrawl.tools.checkstyle.api.AbstractFileSetCheck;
+import com.puppycrawl.tools.checkstyle.api.BeforeExecutionFileFilter;
+import com.puppycrawl.tools.checkstyle.api.CheckstyleException;
+import com.puppycrawl.tools.checkstyle.api.DetailNode;
+import com.puppycrawl.tools.checkstyle.api.Filter;
+import com.puppycrawl.tools.checkstyle.api.JavadocTokenTypes;
+import com.puppycrawl.tools.checkstyle.checks.javadoc.AbstractJavadocCheck;
+import com.puppycrawl.tools.checkstyle.checks.naming.AccessModifierOption;
+import com.puppycrawl.tools.checkstyle.checks.regexp.RegexpMultilineCheck;
+import com.puppycrawl.tools.checkstyle.checks.regexp.RegexpSinglelineCheck;
+import com.puppycrawl.tools.checkstyle.checks.regexp.RegexpSinglelineJavaCheck;
+import com.puppycrawl.tools.checkstyle.utils.CommonUtil;
+import com.puppycrawl.tools.checkstyle.utils.JavadocUtil;
+import com.puppycrawl.tools.checkstyle.utils.TokenUtil;
+
+/**
+ * Utility class for site generation.
+ */
+public final class SiteUtil {
+
+    /** The string 'tokens'. */
+    public static final String TOKENS = &quot;tokens&quot;;
+    /** The string 'javadocTokens'. */
+    public static final String JAVADOC_TOKENS = &quot;javadocTokens&quot;;
+    /** The string '.'. */
+    public static final String DOT = &quot;.&quot;;
+    /** The string ', '. */
+    public static final String COMMA_SPACE = &quot;, &quot;;
+    /** The string 'TokenTypes'. */
+    public static final String TOKEN_TYPES = &quot;TokenTypes&quot;;
+    /** The path to the TokenTypes.html file. */
+    public static final String PATH_TO_TOKEN_TYPES =
+            &quot;apidocs/com/puppycrawl/tools/checkstyle/api/TokenTypes.html&quot;;
+    /** The path to the JavadocTokenTypes.html file. */
+    public static final String PATH_TO_JAVADOC_TOKEN_TYPES =
+            &quot;apidocs/com/puppycrawl/tools/checkstyle/api/JavadocTokenTypes.html&quot;;
+    /** The url of the checkstyle website. */
+    private static final String CHECKSTYLE_ORG_URL = &quot;https://checkstyle.org/&quot;;
+    /** The string 'charset'. */
+    private static final String CHARSET = &quot;charset&quot;;
+    /** The string '{}'. */
+    private static final String CURLY_BRACKETS = &quot;{}&quot;;
+    /** The string 'fileExtensions'. */
+    private static final String FILE_EXTENSIONS = &quot;fileExtensions&quot;;
+    /** The string 'checks'. */
+    private static final String CHECKS = &quot;checks&quot;;
+    /** The string 'naming'. */
+    private static final String NAMING = &quot;naming&quot;;
+    /** The string 'src'. */
+    private static final String SRC = &quot;src&quot;;
+
+    /** Precompiled regex pattern to remove the &quot;Setter to &quot; prefix from strings. */
+<span class="fc" id="L122">    private static final Pattern SETTER_PATTERN = Pattern.compile(&quot;^Setter to &quot;);</span>
+
+    /** Class name and their corresponding parent module name. */
+<span class="fc" id="L125">    private static final Map&lt;Class&lt;?&gt;, String&gt; CLASS_TO_PARENT_MODULE = Map.ofEntries(</span>
+<span class="fc" id="L126">        Map.entry(AbstractCheck.class, TreeWalker.class.getSimpleName()),</span>
+<span class="fc" id="L127">        Map.entry(TreeWalkerFilter.class, TreeWalker.class.getSimpleName()),</span>
+<span class="fc" id="L128">        Map.entry(AbstractFileSetCheck.class, Checker.class.getSimpleName()),</span>
+<span class="fc" id="L129">        Map.entry(Filter.class, Checker.class.getSimpleName()),</span>
+<span class="fc" id="L130">        Map.entry(BeforeExecutionFileFilter.class, Checker.class.getSimpleName())</span>
+    );
+
+    /** Set of properties that every check has. */
+<span class="fc" id="L134">    private static final Set&lt;String&gt; CHECK_PROPERTIES =</span>
+<span class="fc" id="L135">            getProperties(AbstractCheck.class);</span>
+
+    /** Set of properties that every Javadoc check has. */
+<span class="fc" id="L138">    private static final Set&lt;String&gt; JAVADOC_CHECK_PROPERTIES =</span>
+<span class="fc" id="L139">            getProperties(AbstractJavadocCheck.class);</span>
+
+    /** Set of properties that every FileSet check has. */
+<span class="fc" id="L142">    private static final Set&lt;String&gt; FILESET_PROPERTIES =</span>
+<span class="fc" id="L143">            getProperties(AbstractFileSetCheck.class);</span>
+
+    /**
+     * Check and property name.
+     */
+    private static final String HEADER_CHECK_HEADER = &quot;HeaderCheck.header&quot;;
+
+    /**
+     * Check and property name.
+     */
+    private static final String REGEXP_HEADER_CHECK_HEADER = &quot;RegexpHeaderCheck.header&quot;;
+
+    /** Set of properties that are undocumented. Those are internal properties. */
+<span class="fc" id="L156">    private static final Set&lt;String&gt; UNDOCUMENTED_PROPERTIES = Set.of(</span>
+        &quot;SuppressWithNearbyCommentFilter.fileContents&quot;,
+        &quot;SuppressionCommentFilter.fileContents&quot;
+    );
+
+    /** Properties that can not be gathered from class instance. */
+<span class="fc" id="L162">    private static final Set&lt;String&gt; PROPERTIES_ALLOWED_GET_TYPES_FROM_METHOD = Set.of(</span>
+        // static field (all upper case)
+        &quot;SuppressWarningsHolder.aliasList&quot;,
+        // loads string into memory similar to file
+        HEADER_CHECK_HEADER,
+        REGEXP_HEADER_CHECK_HEADER,
+        // until https://github.com/checkstyle/checkstyle/issues/13376
+        &quot;CustomImportOrderCheck.customImportOrderRules&quot;
+    );
+
+    /**
+     * Frequent version.
+     */
+    private static final String VERSION_6_9 = &quot;6.9&quot;;
+
+    /**
+     * Frequent version.
+     */
+    private static final String VERSION_5_0 = &quot;5.0&quot;;
+
+    /**
+     * Frequent version.
+     */
+    private static final String VERSION_3_2 = &quot;3.2&quot;;
+
+    /**
+     * Frequent version.
+     */
+    private static final String V824 = &quot;8.24&quot;;
+
+    /**
+     * Frequent version.
+     */
+    private static final String VERSION_8_36 = &quot;8.36&quot;;
+
+    /**
+     * Frequent version.
+     */
+    private static final String VERSION_3_0 = &quot;3.0&quot;;
+
+    /**
+     * Frequent version.
+     */
+    private static final String VERSION_7_7 = &quot;7.7&quot;;
+
+    /**
+     * Frequent version.
+     */
+    private static final String VERSION_5_7 = &quot;5.7&quot;;
+
+    /**
+     * Frequent version.
+     */
+    private static final String VERSION_5_1 = &quot;5.1&quot;;
+
+    /**
+     * Frequent version.
+     */
+    private static final String VERSION_3_4 = &quot;3.4&quot;;
+
+    /**
+     * Map of properties whose since version is different from module version but
+     * are not specified in code because they are inherited from their super class(es).
+     * Until &lt;a href=&quot;https://github.com/checkstyle/checkstyle/issues/14052&quot;&gt;#14052&lt;/a&gt;.
+     *
+     * @noinspection JavacQuirks
+     * @noinspectionreason JavacQuirks until #14052
+     */
+<span class="fc" id="L230">    private static final Map&lt;String, String&gt; SINCE_VERSION_FOR_INHERITED_PROPERTY = Map.ofEntries(</span>
+<span class="fc" id="L231">        Map.entry(&quot;MissingDeprecatedCheck.violateExecutionOnNonTightHtml&quot;, V824),</span>
+<span class="fc" id="L232">        Map.entry(&quot;NonEmptyAtclauseDescriptionCheck.violateExecutionOnNonTightHtml&quot;, &quot;8.3&quot;),</span>
+<span class="fc" id="L233">        Map.entry(&quot;HeaderCheck.charset&quot;, VERSION_5_0),</span>
+<span class="fc" id="L234">        Map.entry(&quot;HeaderCheck.fileExtensions&quot;, VERSION_6_9),</span>
+<span class="fc" id="L235">        Map.entry(&quot;HeaderCheck.headerFile&quot;, VERSION_3_2),</span>
+<span class="fc" id="L236">        Map.entry(HEADER_CHECK_HEADER, VERSION_5_0),</span>
+<span class="fc" id="L237">        Map.entry(&quot;RegexpHeaderCheck.charset&quot;, VERSION_5_0),</span>
+<span class="fc" id="L238">        Map.entry(&quot;RegexpHeaderCheck.fileExtensions&quot;, VERSION_6_9),</span>
+<span class="fc" id="L239">        Map.entry(&quot;RegexpHeaderCheck.headerFile&quot;, VERSION_3_2),</span>
+<span class="fc" id="L240">        Map.entry(REGEXP_HEADER_CHECK_HEADER, VERSION_5_0),</span>
+<span class="fc" id="L241">        Map.entry(&quot;ClassDataAbstractionCouplingCheck.excludeClassesRegexps&quot;, VERSION_7_7),</span>
+<span class="fc" id="L242">        Map.entry(&quot;ClassDataAbstractionCouplingCheck.excludedClasses&quot;, VERSION_5_7),</span>
+<span class="fc" id="L243">        Map.entry(&quot;ClassDataAbstractionCouplingCheck.excludedPackages&quot;, VERSION_7_7),</span>
+<span class="fc" id="L244">        Map.entry(&quot;ClassDataAbstractionCouplingCheck.max&quot;, VERSION_3_4),</span>
+<span class="fc" id="L245">        Map.entry(&quot;ClassFanOutComplexityCheck.excludeClassesRegexps&quot;, VERSION_7_7),</span>
+<span class="fc" id="L246">        Map.entry(&quot;ClassFanOutComplexityCheck.excludedClasses&quot;, VERSION_5_7),</span>
+<span class="fc" id="L247">        Map.entry(&quot;ClassFanOutComplexityCheck.excludedPackages&quot;, VERSION_7_7),</span>
+<span class="fc" id="L248">        Map.entry(&quot;ClassFanOutComplexityCheck.max&quot;, VERSION_3_4),</span>
+<span class="fc" id="L249">        Map.entry(&quot;NonEmptyAtclauseDescriptionCheck.javadocTokens&quot;, &quot;7.3&quot;),</span>
+<span class="fc" id="L250">        Map.entry(&quot;FileTabCharacterCheck.fileExtensions&quot;, VERSION_5_0),</span>
+<span class="fc" id="L251">        Map.entry(&quot;NewlineAtEndOfFileCheck.fileExtensions&quot;, &quot;3.1&quot;),</span>
+<span class="fc" id="L252">        Map.entry(&quot;JavadocPackageCheck.fileExtensions&quot;, VERSION_5_0),</span>
+<span class="fc" id="L253">        Map.entry(&quot;OrderedPropertiesCheck.fileExtensions&quot;, &quot;8.22&quot;),</span>
+<span class="fc" id="L254">        Map.entry(&quot;UniquePropertiesCheck.fileExtensions&quot;, VERSION_5_7),</span>
+<span class="fc" id="L255">        Map.entry(&quot;TranslationCheck.fileExtensions&quot;, VERSION_3_0),</span>
+<span class="fc" id="L256">        Map.entry(&quot;LineLengthCheck.fileExtensions&quot;, V824),</span>
+        // until https://github.com/checkstyle/checkstyle/issues/14052
+<span class="fc" id="L258">        Map.entry(&quot;JavadocBlockTagLocationCheck.violateExecutionOnNonTightHtml&quot;, V824),</span>
+<span class="fc" id="L259">        Map.entry(&quot;JavadocMissingLeadingAsteriskCheck.violateExecutionOnNonTightHtml&quot;, &quot;8.38&quot;),</span>
+<span class="fc" id="L260">        Map.entry(</span>
+            &quot;RequireEmptyLineBeforeBlockTagGroupCheck.violateExecutionOnNonTightHtml&quot;,
+            VERSION_8_36),
+<span class="fc" id="L263">        Map.entry(&quot;ParenPadCheck.option&quot;, VERSION_3_0),</span>
+<span class="fc" id="L264">        Map.entry(&quot;TypecastParenPadCheck.option&quot;, VERSION_3_2),</span>
+<span class="fc" id="L265">        Map.entry(&quot;FileLengthCheck.fileExtensions&quot;, VERSION_5_0),</span>
+<span class="fc" id="L266">        Map.entry(&quot;StaticVariableNameCheck.applyToPackage&quot;, VERSION_5_0),</span>
+<span class="fc" id="L267">        Map.entry(&quot;StaticVariableNameCheck.applyToPrivate&quot;, VERSION_5_0),</span>
+<span class="fc" id="L268">        Map.entry(&quot;StaticVariableNameCheck.applyToProtected&quot;, VERSION_5_0),</span>
+<span class="fc" id="L269">        Map.entry(&quot;StaticVariableNameCheck.applyToPublic&quot;, VERSION_5_0),</span>
+<span class="fc" id="L270">        Map.entry(&quot;StaticVariableNameCheck.format&quot;, VERSION_3_0),</span>
+<span class="fc" id="L271">        Map.entry(&quot;TypeNameCheck.applyToPackage&quot;, VERSION_5_0),</span>
+<span class="fc" id="L272">        Map.entry(&quot;TypeNameCheck.applyToPrivate&quot;, VERSION_5_0),</span>
+<span class="fc" id="L273">        Map.entry(&quot;TypeNameCheck.applyToProtected&quot;, VERSION_5_0),</span>
+<span class="fc" id="L274">        Map.entry(&quot;TypeNameCheck.applyToPublic&quot;, VERSION_5_0),</span>
+<span class="fc" id="L275">        Map.entry(&quot;RegexpMultilineCheck.fileExtensions&quot;, VERSION_5_0),</span>
+<span class="fc" id="L276">        Map.entry(&quot;RegexpOnFilenameCheck.fileExtensions&quot;, &quot;6.15&quot;),</span>
+<span class="fc" id="L277">        Map.entry(&quot;RegexpSinglelineCheck.fileExtensions&quot;, VERSION_5_0),</span>
+<span class="fc" id="L278">        Map.entry(&quot;ClassTypeParameterNameCheck.format&quot;, VERSION_5_0),</span>
+<span class="fc" id="L279">        Map.entry(&quot;CatchParameterNameCheck.format&quot;, &quot;6.14&quot;),</span>
+<span class="fc" id="L280">        Map.entry(&quot;LambdaParameterNameCheck.format&quot;, &quot;8.11&quot;),</span>
+<span class="fc" id="L281">        Map.entry(&quot;IllegalIdentifierNameCheck.format&quot;, VERSION_8_36),</span>
+<span class="fc" id="L282">        Map.entry(&quot;ConstantNameCheck.format&quot;, VERSION_3_0),</span>
+<span class="fc" id="L283">        Map.entry(&quot;ConstantNameCheck.applyToPackage&quot;, VERSION_5_0),</span>
+<span class="fc" id="L284">        Map.entry(&quot;ConstantNameCheck.applyToPrivate&quot;, VERSION_5_0),</span>
+<span class="fc" id="L285">        Map.entry(&quot;ConstantNameCheck.applyToProtected&quot;, VERSION_5_0),</span>
+<span class="fc" id="L286">        Map.entry(&quot;ConstantNameCheck.applyToPublic&quot;, VERSION_5_0),</span>
+<span class="fc" id="L287">        Map.entry(&quot;InterfaceTypeParameterNameCheck.format&quot;, &quot;5.8&quot;),</span>
+<span class="fc" id="L288">        Map.entry(&quot;LocalFinalVariableNameCheck.format&quot;, VERSION_3_0),</span>
+<span class="fc" id="L289">        Map.entry(&quot;LocalVariableNameCheck.format&quot;, VERSION_3_0),</span>
+<span class="fc" id="L290">        Map.entry(&quot;MemberNameCheck.format&quot;, VERSION_3_0),</span>
+<span class="fc" id="L291">        Map.entry(&quot;MemberNameCheck.applyToPackage&quot;, VERSION_3_4),</span>
+<span class="fc" id="L292">        Map.entry(&quot;MemberNameCheck.applyToPrivate&quot;, VERSION_3_4),</span>
+<span class="fc" id="L293">        Map.entry(&quot;MemberNameCheck.applyToProtected&quot;, VERSION_3_4),</span>
+<span class="fc" id="L294">        Map.entry(&quot;MemberNameCheck.applyToPublic&quot;, VERSION_3_4),</span>
+<span class="fc" id="L295">        Map.entry(&quot;MethodNameCheck.format&quot;, VERSION_3_0),</span>
+<span class="fc" id="L296">        Map.entry(&quot;MethodNameCheck.applyToPackage&quot;, VERSION_5_1),</span>
+<span class="fc" id="L297">        Map.entry(&quot;MethodNameCheck.applyToPrivate&quot;, VERSION_5_1),</span>
+<span class="fc" id="L298">        Map.entry(&quot;MethodNameCheck.applyToProtected&quot;, VERSION_5_1),</span>
+<span class="fc" id="L299">        Map.entry(&quot;MethodNameCheck.applyToPublic&quot;, VERSION_5_1),</span>
+<span class="fc" id="L300">        Map.entry(&quot;MethodTypeParameterNameCheck.format&quot;, VERSION_5_0),</span>
+<span class="fc" id="L301">        Map.entry(&quot;ParameterNameCheck.format&quot;, VERSION_3_0),</span>
+<span class="fc" id="L302">        Map.entry(&quot;PatternVariableNameCheck.format&quot;, VERSION_8_36),</span>
+<span class="fc" id="L303">        Map.entry(&quot;RecordTypeParameterNameCheck.format&quot;, VERSION_8_36),</span>
+<span class="fc" id="L304">        Map.entry(&quot;RecordComponentNameCheck.format&quot;, &quot;8.40&quot;),</span>
+<span class="fc" id="L305">        Map.entry(&quot;TypeNameCheck.format&quot;, VERSION_3_0)</span>
+    );
+
+    /** Map of all superclasses properties and their javadocs. */
+<span class="fc" id="L309">    private static final Map&lt;String, DetailNode&gt; SUPER_CLASS_PROPERTIES_JAVADOCS =</span>
+            new HashMap&lt;&gt;();
+
+    /** Path to main source code folder. */
+<span class="fc" id="L313">    private static final String MAIN_FOLDER_PATH = Paths.get(</span>
+<span class="fc" id="L314">            SRC, &quot;main&quot;, &quot;java&quot;, &quot;com&quot;, &quot;puppycrawl&quot;, &quot;tools&quot;, &quot;checkstyle&quot;).toString();</span>
+
+    /** List of files who are superclasses and contain certain properties that checks inherit. */
+<span class="fc" id="L317">    private static final List&lt;File&gt; MODULE_SUPER_CLASS_FILES = List.of(</span>
+<span class="fc" id="L318">        new File(Paths.get(MAIN_FOLDER_PATH,</span>
+<span class="fc" id="L319">                CHECKS, NAMING, &quot;AbstractAccessControlNameCheck.java&quot;).toString()),</span>
+<span class="fc" id="L320">        new File(Paths.get(MAIN_FOLDER_PATH,</span>
+<span class="fc" id="L321">                CHECKS, NAMING, &quot;AbstractNameCheck.java&quot;).toString()),</span>
+<span class="fc" id="L322">        new File(Paths.get(MAIN_FOLDER_PATH,</span>
+<span class="fc" id="L323">                CHECKS, &quot;javadoc&quot;, &quot;AbstractJavadocCheck.java&quot;).toString()),</span>
+<span class="fc" id="L324">        new File(Paths.get(MAIN_FOLDER_PATH,</span>
+<span class="fc" id="L325">                &quot;api&quot;, &quot;AbstractFileSetCheck.java&quot;).toString()),</span>
+<span class="fc" id="L326">        new File(Paths.get(MAIN_FOLDER_PATH,</span>
+<span class="fc" id="L327">                CHECKS, &quot;header&quot;, &quot;AbstractHeaderCheck.java&quot;).toString()),</span>
+<span class="fc" id="L328">        new File(Paths.get(MAIN_FOLDER_PATH,</span>
+<span class="fc" id="L329">                CHECKS, &quot;metrics&quot;, &quot;AbstractClassCouplingCheck.java&quot;).toString()),</span>
+<span class="fc" id="L330">        new File(Paths.get(MAIN_FOLDER_PATH,</span>
+<span class="fc" id="L331">                CHECKS, &quot;whitespace&quot;, &quot;AbstractParenPadCheck.java&quot;).toString())</span>
+    );
+
+    /**
+     * Private utility constructor.
+     */
+    private SiteUtil() {
+    }
+
+    /**
+     * Get string values of the message keys from the given check class.
+     *
+     * @param module class to examine.
+     * @return a set of checkstyle's module message keys.
+     * @throws MacroExecutionException if extraction of message keys fails.
+     */
+    public static Set&lt;String&gt; getMessageKeys(Class&lt;?&gt; module)
+            throws MacroExecutionException {
+<span class="fc" id="L349">        final Set&lt;Field&gt; messageKeyFields = getCheckMessageKeys(module);</span>
+        // We use a TreeSet to sort the message keys alphabetically
+<span class="fc" id="L351">        final Set&lt;String&gt; messageKeys = new TreeSet&lt;&gt;();</span>
+<span class="fc bfc" id="L352" title="All 2 branches covered.">        for (Field field : messageKeyFields) {</span>
+<span class="fc" id="L353">            messageKeys.add(getFieldValue(field, module).toString());</span>
+<span class="fc" id="L354">        }</span>
+<span class="fc" id="L355">        return messageKeys;</span>
+    }
+
+    /**
+     * Gets the check's messages keys.
+     *
+     * @param module class to examine.
+     * @return a set of checkstyle's module message fields.
+     * @throws MacroExecutionException if the attempt to read a protected class fails.
+     * @noinspection ChainOfInstanceofChecks
+     * @noinspectionreason ChainOfInstanceofChecks - We will deal with this at
+     *                     &lt;a href=&quot;https://github.com/checkstyle/checkstyle/issues/13500&quot;&gt;13500&lt;/a&gt;
+     *
+     */
+    private static Set&lt;Field&gt; getCheckMessageKeys(Class&lt;?&gt; module)
+            throws MacroExecutionException {
+        try {
+<span class="fc" id="L372">            final Set&lt;Field&gt; checkstyleMessages = new HashSet&lt;&gt;();</span>
+
+            // get all fields from current class
+<span class="fc" id="L375">            final Field[] fields = module.getDeclaredFields();</span>
+
+<span class="fc bfc" id="L377" title="All 2 branches covered.">            for (Field field : fields) {</span>
+<span class="fc bfc" id="L378" title="All 2 branches covered.">                if (field.getName().startsWith(&quot;MSG_&quot;)) {</span>
+<span class="fc" id="L379">                    checkstyleMessages.add(field);</span>
+                }
+            }
+
+            // deep scan class through hierarchy
+<span class="fc" id="L384">            final Class&lt;?&gt; superModule = module.getSuperclass();</span>
+
+<span class="fc bfc" id="L386" title="All 2 branches covered.">            if (superModule != null) {</span>
+<span class="fc" id="L387">                checkstyleMessages.addAll(getCheckMessageKeys(superModule));</span>
+            }
+
+            // special cases that require additional classes
+<span class="fc bfc" id="L391" title="All 2 branches covered.">            if (module == RegexpMultilineCheck.class) {</span>
+<span class="fc" id="L392">                checkstyleMessages.addAll(getCheckMessageKeys(Class</span>
+<span class="fc" id="L393">                    .forName(&quot;com.puppycrawl.tools.checkstyle.checks.regexp.MultilineDetector&quot;)));</span>
+            }
+<span class="fc bfc" id="L395" title="All 4 branches covered.">            else if (module == RegexpSinglelineCheck.class</span>
+                    || module == RegexpSinglelineJavaCheck.class) {
+<span class="fc" id="L397">                checkstyleMessages.addAll(getCheckMessageKeys(Class</span>
+<span class="fc" id="L398">                    .forName(&quot;com.puppycrawl.tools.checkstyle.checks.regexp.SinglelineDetector&quot;)));</span>
+            }
+
+<span class="fc" id="L401">            return checkstyleMessages;</span>
+        }
+<span class="nc" id="L403">        catch (ClassNotFoundException ex) {</span>
+<span class="nc" id="L404">            final String message = String.format(Locale.ROOT, &quot;Couldn't find class: %s&quot;,</span>
+<span class="nc" id="L405">                    module.getName());</span>
+<span class="nc" id="L406">            throw new MacroExecutionException(message, ex);</span>
+        }
+    }
+
+    /**
+     * Returns the value of the given field.
+     *
+     * @param field the field.
+     * @param instance the instance of the module.
+     * @return the value of the field.
+     * @throws MacroExecutionException if the value could not be retrieved.
+     */
+    public static Object getFieldValue(Field field, Object instance)
+            throws MacroExecutionException {
+        try {
+            // required for package/private classes
+<span class="fc" id="L422">            field.trySetAccessible();</span>
+<span class="fc" id="L423">            return field.get(instance);</span>
+        }
+<span class="nc" id="L425">        catch (IllegalAccessException ex) {</span>
+<span class="nc" id="L426">            throw new MacroExecutionException(&quot;Couldn't get field value&quot;, ex);</span>
+        }
+    }
+
+    /**
+     * Returns the instance of the module with the given name.
+     *
+     * @param moduleName the name of the module.
+     * @return the instance of the module.
+     * @throws MacroExecutionException if the module could not be created.
+     */
+    public static Object getModuleInstance(String moduleName) throws MacroExecutionException {
+<span class="fc" id="L438">        final ModuleFactory factory = getPackageObjectFactory();</span>
+        try {
+<span class="fc" id="L440">            return factory.createModule(moduleName);</span>
+        }
+<span class="nc" id="L442">        catch (CheckstyleException ex) {</span>
+<span class="nc" id="L443">            throw new MacroExecutionException(&quot;Couldn't find class: &quot; + moduleName, ex);</span>
+        }
+    }
+
+    /**
+     * Returns the default PackageObjectFactory with the default package names.
+     *
+     * @return the default PackageObjectFactory.
+     * @throws MacroExecutionException if the PackageObjectFactory cannot be created.
+     */
+    private static PackageObjectFactory getPackageObjectFactory() throws MacroExecutionException {
+        try {
+<span class="fc" id="L455">            final ClassLoader cl = ViolationMessagesMacro.class.getClassLoader();</span>
+<span class="fc" id="L456">            final Set&lt;String&gt; packageNames = PackageNamesLoader.getPackageNames(cl);</span>
+<span class="fc" id="L457">            return new PackageObjectFactory(packageNames, cl);</span>
+        }
+<span class="nc" id="L459">        catch (CheckstyleException ex) {</span>
+<span class="nc" id="L460">            throw new MacroExecutionException(&quot;Couldn't load checkstyle modules&quot;, ex);</span>
+        }
+    }
+
+    /**
+     * Construct a string with a leading newline character and followed by
+     * the given amount of spaces. We use this method only to match indentation in
+     * regular xdocs and have minimal diff when parsing the templates.
+     * This method exists until
+     * &lt;a href=&quot;https://github.com/checkstyle/checkstyle/issues/13426&quot;&gt;13426&lt;/a&gt;
+     *
+     * @param amountOfSpaces the amount of spaces to add after the newline.
+     * @return the constructed string.
+     */
+    public static String getNewlineAndIndentSpaces(int amountOfSpaces) {
+<span class="fc" id="L475">        return System.lineSeparator() + &quot; &quot;.repeat(amountOfSpaces);</span>
+    }
+
+    /**
+     * Returns path to the template for the given module name or throws an exception if the
+     * template cannot be found.
+     *
+     * @param moduleName the module whose template we are looking for.
+     * @return path to the template.
+     * @throws MacroExecutionException if the template cannot be found.
+     */
+    public static Path getTemplatePath(String moduleName) throws MacroExecutionException {
+<span class="fc" id="L487">        final String fileNamePattern = &quot;.*[\\\\/]&quot;</span>
+<span class="fc" id="L488">                + moduleName.toLowerCase(Locale.ROOT) + &quot;\\..*&quot;;</span>
+<span class="fc" id="L489">        return getXdocsTemplatesFilePaths()</span>
+<span class="fc" id="L490">            .stream()</span>
+<span class="fc" id="L491">            .filter(path -&gt; path.toString().matches(fileNamePattern))</span>
+<span class="fc" id="L492">            .findFirst()</span>
+<span class="fc" id="L493">            .orElse(null);</span>
+    }
+
+    /**
+     * Gets xdocs template file paths. These are files ending with .xml.template.
+     * This method will be changed to gather .xml once
+     * &lt;a href=&quot;https://github.com/checkstyle/checkstyle/issues/13426&quot;&gt;#13426&lt;/a&gt; is resolved.
+     *
+     * @return a set of xdocs template file paths.
+     * @throws MacroExecutionException if an I/O error occurs.
+     */
+    public static Set&lt;Path&gt; getXdocsTemplatesFilePaths() throws MacroExecutionException {
+<span class="fc" id="L505">        final Path directory = Paths.get(&quot;src/xdocs&quot;);</span>
+<span class="fc" id="L506">        try (Stream&lt;Path&gt; stream = Files.find(directory, Integer.MAX_VALUE,</span>
+                (path, attr) -&gt; {
+<span class="fc bfc" id="L508" title="All 2 branches covered.">                    return attr.isRegularFile()</span>
+<span class="fc bfc" id="L509" title="All 2 branches covered.">                            &amp;&amp; path.toString().endsWith(&quot;.xml.template&quot;);</span>
+                })) {
+<span class="fc" id="L511">            return stream.collect(Collectors.toSet());</span>
+        }
+<span class="nc" id="L513">        catch (IOException ioException) {</span>
+<span class="nc" id="L514">            throw new MacroExecutionException(&quot;Failed to find xdocs templates&quot;, ioException);</span>
+        }
+    }
+
+    /**
+     * Returns the parent module name for the given module class. Returns either
+     * &quot;TreeWalker&quot; or &quot;Checker&quot;. Returns null if the module class is null.
+     *
+     * @param moduleClass the module class.
+     * @return the parent module name as a string.
+     * @throws MacroExecutionException if the parent module cannot be found.
+     */
+    public static String getParentModule(Class&lt;?&gt; moduleClass)
+                throws MacroExecutionException {
+<span class="fc" id="L528">        String parentModuleName = &quot;&quot;;</span>
+<span class="fc" id="L529">        Class&lt;?&gt; parentClass = moduleClass.getSuperclass();</span>
+
+<span class="fc bfc" id="L531" title="All 2 branches covered.">        while (parentClass != null) {</span>
+<span class="fc" id="L532">            parentModuleName = CLASS_TO_PARENT_MODULE.get(parentClass);</span>
+<span class="fc bfc" id="L533" title="All 2 branches covered.">            if (parentModuleName != null) {</span>
+<span class="fc" id="L534">                break;</span>
+            }
+<span class="fc" id="L536">            parentClass = parentClass.getSuperclass();</span>
+        }
+
+        // If parent class is not found, check interfaces
+<span class="pc bpc" id="L540" title="1 of 4 branches missed.">        if (parentModuleName == null || parentModuleName.isEmpty()) {</span>
+<span class="fc" id="L541">            final Class&lt;?&gt;[] interfaces = moduleClass.getInterfaces();</span>
+<span class="pc bpc" id="L542" title="1 of 2 branches missed.">            for (Class&lt;?&gt; interfaceClass : interfaces) {</span>
+<span class="fc" id="L543">                parentModuleName = CLASS_TO_PARENT_MODULE.get(interfaceClass);</span>
+<span class="pc bpc" id="L544" title="1 of 2 branches missed.">                if (parentModuleName != null) {</span>
+<span class="fc" id="L545">                    break;</span>
+                }
+            }
+        }
+
+<span class="pc bpc" id="L550" title="2 of 4 branches missed.">        if (parentModuleName == null || parentModuleName.isEmpty()) {</span>
+<span class="nc" id="L551">            final String message = String.format(Locale.ROOT,</span>
+<span class="nc" id="L552">                    &quot;Failed to find parent module for %s&quot;, moduleClass.getSimpleName());</span>
+<span class="nc" id="L553">            throw new MacroExecutionException(message);</span>
+        }
+
+<span class="fc" id="L556">        return parentModuleName;</span>
+    }
+
+    /**
+     * Get a set of properties for the given class that should be documented.
+     *
+     * @param clss the class to get the properties for.
+     * @param instance the instance of the module.
+     * @return a set of properties for the given class.
+     */
+    public static Set&lt;String&gt; getPropertiesForDocumentation(Class&lt;?&gt; clss, Object instance) {
+<span class="fc" id="L567">        final Set&lt;String&gt; properties =</span>
+<span class="fc" id="L568">                getProperties(clss).stream()</span>
+<span class="fc" id="L569">                    .filter(prop -&gt; {</span>
+<span class="pc bpc" id="L570" title="1 of 4 branches missed.">                        return !isGlobalProperty(clss, prop) &amp;&amp; !isUndocumentedProperty(clss, prop);</span>
+                    })
+<span class="fc" id="L572">                    .collect(Collectors.toSet());</span>
+<span class="fc" id="L573">        properties.addAll(getNonExplicitProperties(instance, clss));</span>
+<span class="fc" id="L574">        return new TreeSet&lt;&gt;(properties);</span>
+    }
+
+    /**
+     * Get the javadocs of the properties of the module. If the property is not present in the
+     * module, then the javadoc of the property from the superclass(es) is used.
+     *
+     * @param properties the properties of the module.
+     * @param moduleName the name of the module.
+     * @param moduleFile the module file.
+     * @return the javadocs of the properties of the module.
+     * @throws MacroExecutionException if an error occurs during processing.
+     */
+    public static Map&lt;String, DetailNode&gt; getPropertiesJavadocs(Set&lt;String&gt; properties,
+                                                                String moduleName, File moduleFile)
+            throws MacroExecutionException {
+        // lazy initialization
+<span class="fc bfc" id="L591" title="All 2 branches covered.">        if (SUPER_CLASS_PROPERTIES_JAVADOCS.isEmpty()) {</span>
+<span class="fc" id="L592">            processSuperclasses();</span>
+        }
+
+<span class="fc" id="L595">        processModule(moduleName, moduleFile);</span>
+
+        final Map&lt;String, DetailNode&gt; unmodifiableJavadocs =
+<span class="fc" id="L598">                ClassAndPropertiesSettersJavadocScraper.getJavadocsForModuleOrProperty();</span>
+<span class="fc" id="L599">        final Map&lt;String, DetailNode&gt; javadocs = new LinkedHashMap&lt;&gt;(unmodifiableJavadocs);</span>
+
+<span class="fc" id="L601">        properties.forEach(property -&gt; {</span>
+<span class="fc" id="L602">            final DetailNode superClassPropertyJavadoc =</span>
+<span class="fc" id="L603">                    SUPER_CLASS_PROPERTIES_JAVADOCS.get(property);</span>
+<span class="fc bfc" id="L604" title="All 2 branches covered.">            if (superClassPropertyJavadoc != null) {</span>
+<span class="fc" id="L605">                javadocs.putIfAbsent(property, superClassPropertyJavadoc);</span>
+            }
+<span class="fc" id="L607">        });</span>
+
+<span class="fc" id="L609">        assertAllPropertySetterJavadocsAreFound(properties, moduleName, javadocs);</span>
+
+<span class="fc" id="L611">        return javadocs;</span>
+    }
+
+    /**
+     * Assert that each property has a corresponding setter javadoc that is not null.
+     * 'tokens' and 'javadocTokens' are excluded from this check, because their
+     * description is different from the description of the setter.
+     *
+     * @param properties the properties of the module.
+     * @param moduleName the name of the module.
+     * @param javadocs the javadocs of the properties of the module.
+     * @throws MacroExecutionException if an error occurs during processing.
+     */
+    private static void assertAllPropertySetterJavadocsAreFound(
+            Set&lt;String&gt; properties, String moduleName, Map&lt;String, DetailNode&gt; javadocs)
+            throws MacroExecutionException {
+<span class="fc bfc" id="L627" title="All 2 branches covered.">        for (String property : properties) {</span>
+<span class="fc bfc" id="L628" title="All 2 branches covered.">            final boolean isPropertySetterJavadocFound = javadocs.containsKey(property)</span>
+<span class="pc bpc" id="L629" title="3 of 4 branches missed.">                       || TOKENS.equals(property) || JAVADOC_TOKENS.equals(property);</span>
+<span class="pc bpc" id="L630" title="1 of 2 branches missed.">            if (!isPropertySetterJavadocFound) {</span>
+<span class="nc" id="L631">                final String message = String.format(Locale.ROOT,</span>
+                        &quot;%s: Failed to find setter javadoc for property '%s'&quot;,
+                        moduleName, property);
+<span class="nc" id="L634">                throw new MacroExecutionException(message);</span>
+            }
+<span class="fc" id="L636">        }</span>
+<span class="fc" id="L637">    }</span>
+
+    /**
+     * Collect the properties setters javadocs of the superclasses.
+     *
+     * @throws MacroExecutionException if an error occurs during processing.
+     */
+    private static void processSuperclasses() throws MacroExecutionException {
+<span class="fc bfc" id="L645" title="All 2 branches covered.">        for (File superclassFile : MODULE_SUPER_CLASS_FILES) {</span>
+<span class="fc" id="L646">            final String superclassName = CommonUtil</span>
+<span class="fc" id="L647">                    .getFileNameWithoutExtension(superclassFile.getName());</span>
+<span class="fc" id="L648">            processModule(superclassName, superclassFile);</span>
+            final Map&lt;String, DetailNode&gt; superclassJavadocs =
+<span class="fc" id="L650">                    ClassAndPropertiesSettersJavadocScraper.getJavadocsForModuleOrProperty();</span>
+<span class="fc" id="L651">            SUPER_CLASS_PROPERTIES_JAVADOCS.putAll(superclassJavadocs);</span>
+<span class="fc" id="L652">        }</span>
+<span class="fc" id="L653">    }</span>
+
+    /**
+     * Scrape the Javadocs of the class and its properties setters with
+     * ClassAndPropertiesSettersJavadocScraper.
+     *
+     * @param moduleName the name of the module.
+     * @param moduleFile the module file.
+     * @throws MacroExecutionException if an error occurs during processing.
+     */
+    private static void processModule(String moduleName, File moduleFile)
+            throws MacroExecutionException {
+<span class="pc bpc" id="L665" title="1 of 2 branches missed.">        if (!moduleFile.isFile()) {</span>
+<span class="nc" id="L666">            final String message = String.format(Locale.ROOT,</span>
+                    &quot;File %s is not a file. Please check the 'modulePath' property.&quot;, moduleFile);
+<span class="nc" id="L668">            throw new MacroExecutionException(message);</span>
+        }
+<span class="fc" id="L670">        ClassAndPropertiesSettersJavadocScraper.initialize(moduleName);</span>
+<span class="fc" id="L671">        final Checker checker = new Checker();</span>
+<span class="fc" id="L672">        checker.setModuleClassLoader(Checker.class.getClassLoader());</span>
+<span class="fc" id="L673">        final DefaultConfiguration scraperCheckConfig =</span>
+                        new DefaultConfiguration(
+<span class="fc" id="L675">                                ClassAndPropertiesSettersJavadocScraper.class.getName());</span>
+<span class="fc" id="L676">        final DefaultConfiguration defaultConfiguration =</span>
+                new DefaultConfiguration(&quot;configuration&quot;);
+<span class="fc" id="L678">        final DefaultConfiguration treeWalkerConfig =</span>
+<span class="fc" id="L679">                new DefaultConfiguration(TreeWalker.class.getName());</span>
+<span class="fc" id="L680">        defaultConfiguration.addProperty(CHARSET, StandardCharsets.UTF_8.name());</span>
+<span class="fc" id="L681">        defaultConfiguration.addChild(treeWalkerConfig);</span>
+<span class="fc" id="L682">        treeWalkerConfig.addChild(scraperCheckConfig);</span>
+        try {
+<span class="fc" id="L684">            checker.configure(defaultConfiguration);</span>
+<span class="fc" id="L685">            final List&lt;File&gt; filesToProcess = List.of(moduleFile);</span>
+<span class="fc" id="L686">            checker.process(filesToProcess);</span>
+<span class="fc" id="L687">            checker.destroy();</span>
+        }
+<span class="nc" id="L689">        catch (CheckstyleException checkstyleException) {</span>
+<span class="nc" id="L690">            final String message = String.format(Locale.ROOT, &quot;Failed processing %s&quot;, moduleName);</span>
+<span class="nc" id="L691">            throw new MacroExecutionException(message, checkstyleException);</span>
+<span class="fc" id="L692">        }</span>
+<span class="fc" id="L693">    }</span>
+
+    /**
+     * Get a set of properties for the given class.
+     *
+     * @param clss the class to get the properties for.
+     * @return a set of properties for the given class.
+     */
+    public static Set&lt;String&gt; getProperties(Class&lt;?&gt; clss) {
+<span class="fc" id="L702">        final Set&lt;String&gt; result = new TreeSet&lt;&gt;();</span>
+<span class="fc" id="L703">        final PropertyDescriptor[] propertyDescriptors = PropertyUtils.getPropertyDescriptors(clss);</span>
+
+<span class="fc bfc" id="L705" title="All 2 branches covered.">        for (PropertyDescriptor propertyDescriptor : propertyDescriptors) {</span>
+<span class="fc bfc" id="L706" title="All 2 branches covered.">            if (propertyDescriptor.getWriteMethod() != null) {</span>
+<span class="fc" id="L707">                result.add(propertyDescriptor.getName());</span>
+            }
+        }
+
+<span class="fc" id="L711">        return result;</span>
+    }
+
+    /**
+     * Checks if the property is a global property. Global properties come from the base classes
+     * and are common to all checks. For example id, severity, tabWidth, etc.
+     *
+     * @param clss the class of the module.
+     * @param propertyName the name of the property.
+     * @return true if the property is a global property.
+     */
+    private static boolean isGlobalProperty(Class&lt;?&gt; clss, String propertyName) {
+<span class="fc bfc" id="L723" title="All 2 branches covered.">        return AbstractCheck.class.isAssignableFrom(clss)</span>
+<span class="fc bfc" id="L724" title="All 2 branches covered.">                    &amp;&amp; CHECK_PROPERTIES.contains(propertyName)</span>
+<span class="fc bfc" id="L725" title="All 2 branches covered.">                || AbstractJavadocCheck.class.isAssignableFrom(clss)</span>
+<span class="fc bfc" id="L726" title="All 2 branches covered.">                    &amp;&amp; JAVADOC_CHECK_PROPERTIES.contains(propertyName)</span>
+<span class="fc bfc" id="L727" title="All 2 branches covered.">                || AbstractFileSetCheck.class.isAssignableFrom(clss)</span>
+<span class="fc bfc" id="L728" title="All 2 branches covered.">                    &amp;&amp; FILESET_PROPERTIES.contains(propertyName);</span>
+    }
+
+    /**
+     * Checks if the property is supposed to be documented.
+     *
+     * @param clss the class of the module.
+     * @param propertyName the name of the property.
+     * @return true if the property is supposed to be documented.
+     */
+    private static boolean isUndocumentedProperty(Class&lt;?&gt; clss, String propertyName) {
+<span class="fc" id="L739">        return UNDOCUMENTED_PROPERTIES.contains(clss.getSimpleName() + DOT + propertyName);</span>
+    }
+
+    /**
+     * Gets properties that are not explicitly captured but should be documented if
+     * certain conditions are met.
+     *
+     * @param instance the instance of the module.
+     * @param clss the class of the module.
+     * @return the non explicit properties.
+     */
+    private static Set&lt;String&gt; getNonExplicitProperties(
+            Object instance, Class&lt;?&gt; clss) {
+<span class="fc" id="L752">        final Set&lt;String&gt; result = new TreeSet&lt;&gt;();</span>
+<span class="fc bfc" id="L753" title="All 2 branches covered.">        if (AbstractCheck.class.isAssignableFrom(clss)) {</span>
+<span class="fc" id="L754">            final AbstractCheck check = (AbstractCheck) instance;</span>
+
+<span class="fc" id="L756">            final int[] acceptableTokens = check.getAcceptableTokens();</span>
+<span class="fc" id="L757">            Arrays.sort(acceptableTokens);</span>
+<span class="fc" id="L758">            final int[] defaultTokens = check.getDefaultTokens();</span>
+<span class="fc" id="L759">            Arrays.sort(defaultTokens);</span>
+<span class="fc" id="L760">            final int[] requiredTokens = check.getRequiredTokens();</span>
+<span class="fc" id="L761">            Arrays.sort(requiredTokens);</span>
+
+<span class="fc bfc" id="L763" title="All 2 branches covered.">            if (!Arrays.equals(acceptableTokens, defaultTokens)</span>
+<span class="fc bfc" id="L764" title="All 2 branches covered.">                    || !Arrays.equals(acceptableTokens, requiredTokens)) {</span>
+<span class="fc" id="L765">                result.add(TOKENS);</span>
+            }
+        }
+
+<span class="fc bfc" id="L769" title="All 2 branches covered.">        if (AbstractJavadocCheck.class.isAssignableFrom(clss)) {</span>
+<span class="fc" id="L770">            final AbstractJavadocCheck check = (AbstractJavadocCheck) instance;</span>
+<span class="fc" id="L771">            result.add(&quot;violateExecutionOnNonTightHtml&quot;);</span>
+
+<span class="fc" id="L773">            final int[] acceptableJavadocTokens = check.getAcceptableJavadocTokens();</span>
+<span class="fc" id="L774">            Arrays.sort(acceptableJavadocTokens);</span>
+<span class="fc" id="L775">            final int[] defaultJavadocTokens = check.getDefaultJavadocTokens();</span>
+<span class="fc" id="L776">            Arrays.sort(defaultJavadocTokens);</span>
+<span class="fc" id="L777">            final int[] requiredJavadocTokens = check.getRequiredJavadocTokens();</span>
+<span class="fc" id="L778">            Arrays.sort(requiredJavadocTokens);</span>
+
+<span class="pc bpc" id="L780" title="1 of 2 branches missed.">            if (!Arrays.equals(acceptableJavadocTokens, defaultJavadocTokens)</span>
+<span class="fc bfc" id="L781" title="All 2 branches covered.">                    || !Arrays.equals(acceptableJavadocTokens, requiredJavadocTokens)) {</span>
+<span class="fc" id="L782">                result.add(JAVADOC_TOKENS);</span>
+            }
+        }
+
+<span class="fc bfc" id="L786" title="All 2 branches covered.">        if (AbstractFileSetCheck.class.isAssignableFrom(clss)) {</span>
+<span class="fc" id="L787">            result.add(FILE_EXTENSIONS);</span>
+        }
+<span class="fc" id="L789">        return result;</span>
+    }
+
+    /**
+     * Get the description of the property.
+     *
+     * @param propertyName the name of the property.
+     * @param javadoc the Javadoc of the property setter method.
+     * @param moduleName the name of the module.
+     * @return the description of the property.
+     * @throws MacroExecutionException if the description could not be extracted.
+     */
+    public static String getPropertyDescription(
+            String propertyName, DetailNode javadoc, String moduleName)
+            throws MacroExecutionException {
+        final String description;
+<span class="fc bfc" id="L805" title="All 2 branches covered.">        if (TOKENS.equals(propertyName)) {</span>
+<span class="fc" id="L806">            description = &quot;tokens to check&quot;;</span>
+        }
+<span class="fc bfc" id="L808" title="All 2 branches covered.">        else if (JAVADOC_TOKENS.equals(propertyName)) {</span>
+<span class="fc" id="L809">            description = &quot;javadoc tokens to check&quot;;</span>
+        }
+        else {
+<span class="fc" id="L812">            final String descriptionString = SETTER_PATTERN.matcher(</span>
+<span class="fc" id="L813">                    DescriptionExtractor.getDescriptionFromJavadoc(javadoc, moduleName))</span>
+<span class="fc" id="L814">                    .replaceFirst(&quot;&quot;);</span>
+
+<span class="fc" id="L816">            final String firstLetterCapitalized = descriptionString.substring(0, 1)</span>
+<span class="fc" id="L817">                    .toUpperCase(Locale.ROOT);</span>
+<span class="fc" id="L818">            description = firstLetterCapitalized + descriptionString.substring(1);</span>
+        }
+<span class="fc" id="L820">        return description;</span>
+    }
+
+    /**
+     * Get the since version of the property.
+     *
+     * @param moduleName the name of the module.
+     * @param moduleJavadoc the Javadoc of the module.
+     * @param propertyName the name of the property.
+     * @param propertyJavadoc the Javadoc of the property setter method.
+     * @return the since version of the property.
+     * @throws MacroExecutionException if the since version could not be extracted.
+     */
+    public static String getSinceVersion(String moduleName, DetailNode moduleJavadoc,
+                                         String propertyName, DetailNode propertyJavadoc)
+            throws MacroExecutionException {
+        final String sinceVersion;
+<span class="fc" id="L837">        final String superClassSinceVersion = SINCE_VERSION_FOR_INHERITED_PROPERTY</span>
+<span class="fc" id="L838">                   .get(moduleName + DOT + propertyName);</span>
+<span class="fc bfc" id="L839" title="All 2 branches covered.">        if (superClassSinceVersion != null) {</span>
+<span class="fc" id="L840">            sinceVersion = superClassSinceVersion;</span>
+        }
+<span class="fc bfc" id="L842" title="All 2 branches covered.">        else if (TOKENS.equals(propertyName)</span>
+<span class="pc bpc" id="L843" title="1 of 2 branches missed.">                        || JAVADOC_TOKENS.equals(propertyName)) {</span>
+            // Use module's since version for inherited properties
+<span class="fc" id="L845">            sinceVersion = getSinceVersionFromJavadoc(moduleJavadoc);</span>
+        }
+        else {
+<span class="fc" id="L848">            sinceVersion = getSinceVersionFromJavadoc(propertyJavadoc);</span>
+        }
+
+<span class="pc bpc" id="L851" title="1 of 2 branches missed.">        if (sinceVersion == null) {</span>
+<span class="nc" id="L852">            final String message = String.format(Locale.ROOT,</span>
+                    &quot;Failed to find '@since' version for '%s' property&quot;
+                            + &quot; in '%s' and all parent classes.&quot;, propertyName, moduleName);
+<span class="nc" id="L855">            throw new MacroExecutionException(message);</span>
+        }
+
+<span class="fc" id="L858">        return sinceVersion;</span>
+    }
+
+    /**
+     * Extract the since version from the Javadoc.
+     *
+     * @param javadoc the Javadoc to extract the since version from.
+     * @return the since version of the setter.
+     */
+    @Nullable
+    private static String getSinceVersionFromJavadoc(DetailNode javadoc) {
+<span class="fc" id="L869">        final DetailNode sinceJavadocTag = getSinceJavadocTag(javadoc);</span>
+<span class="fc" id="L870">        return Optional.ofNullable(sinceJavadocTag)</span>
+<span class="fc" id="L871">            .map(tag -&gt; JavadocUtil.findFirstToken(tag, JavadocTokenTypes.DESCRIPTION))</span>
+<span class="fc" id="L872">            .map(description -&gt; JavadocUtil.findFirstToken(description, JavadocTokenTypes.TEXT))</span>
+<span class="fc" id="L873">            .map(DetailNode::getText)</span>
+<span class="fc" id="L874">            .orElse(null);</span>
+    }
+
+    /**
+     * Find the since Javadoc tag node in the given Javadoc.
+     *
+     * @param javadoc the Javadoc to search.
+     * @return the since Javadoc tag node or null if not found.
+     */
+    private static DetailNode getSinceJavadocTag(DetailNode javadoc) {
+<span class="fc" id="L884">        final DetailNode[] children = javadoc.getChildren();</span>
+<span class="fc" id="L885">        DetailNode javadocTagWithSince = null;</span>
+<span class="pc bpc" id="L886" title="1 of 2 branches missed.">        for (final DetailNode child : children) {</span>
+<span class="fc bfc" id="L887" title="All 2 branches covered.">            if (child.getType() == JavadocTokenTypes.JAVADOC_TAG) {</span>
+<span class="fc" id="L888">                final DetailNode sinceNode = JavadocUtil.findFirstToken(</span>
+                        child, JavadocTokenTypes.SINCE_LITERAL);
+<span class="fc bfc" id="L890" title="All 2 branches covered.">                if (sinceNode != null) {</span>
+<span class="fc" id="L891">                    javadocTagWithSince = child;</span>
+<span class="fc" id="L892">                    break;</span>
+                }
+            }
+        }
+<span class="fc" id="L896">        return javadocTagWithSince;</span>
+    }
+
+    /**
+     * Get the type of the property.
+     *
+     * @param field the field to get the type of.
+     * @param propertyName the name of the property.
+     * @param moduleName the name of the module.
+     * @param instance the instance of the module.
+     * @return the type of the property.
+     * @throws MacroExecutionException if an error occurs during getting the type.
+     */
+    public static String getType(Field field, String propertyName,
+                                 String moduleName, Object instance)
+            throws MacroExecutionException {
+<span class="fc" id="L912">        final Class&lt;?&gt; fieldClass = getFieldClass(field, propertyName, moduleName, instance);</span>
+<span class="fc" id="L913">        return Optional.ofNullable(field)</span>
+<span class="fc" id="L914">                .map(nonNullField -&gt; nonNullField.getAnnotation(XdocsPropertyType.class))</span>
+<span class="fc" id="L915">                .map(propertyType -&gt; propertyType.value().getDescription())</span>
+<span class="fc" id="L916">                .orElseGet(fieldClass::getSimpleName);</span>
+    }
+
+    /**
+     * Get the default value of the property.
+     *
+     * @param propertyName the name of the property.
+     * @param field the field to get the default value of.
+     * @param classInstance the instance of the class to get the default value of.
+     * @param moduleName the name of the module.
+     * @return the default value of the property.
+     * @throws MacroExecutionException if an error occurs during getting the default value.
+     * @noinspection IfStatementWithTooManyBranches
+     * @noinspectionreason IfStatementWithTooManyBranches - complex nature of getting properties
+     *      from XML files requires giant if/else statement
+     */
+    // -@cs[CyclomaticComplexity] Splitting would not make the code more readable
+    public static String getDefaultValue(String propertyName, Field field,
+                                         Object classInstance, String moduleName)
+            throws MacroExecutionException {
+<span class="fc" id="L936">        final Object value = getFieldValue(field, classInstance);</span>
+<span class="fc" id="L937">        final Class&lt;?&gt; fieldClass = getFieldClass(field, propertyName, moduleName, classInstance);</span>
+<span class="fc" id="L938">        String result = null;</span>
+<span class="fc bfc" id="L939" title="All 2 branches covered.">        if (CHARSET.equals(propertyName)) {</span>
+<span class="fc" id="L940">            result = &quot;the charset property of the parent&quot;</span>
+                    + &quot; &lt;a href=\&quot;https://checkstyle.org/config.html#Checker\&quot;&gt;Checker&lt;/a&gt; module&quot;;
+        }
+<span class="pc bpc" id="L943" title="1 of 2 branches missed.">        else if (classInstance instanceof PropertyCacheFile) {</span>
+<span class="nc" id="L944">            result = &quot;null (no cache file)&quot;;</span>
+        }
+<span class="fc bfc" id="L946" title="All 2 branches covered.">        else if (fieldClass == boolean.class) {</span>
+<span class="fc" id="L947">            result = value.toString();</span>
+        }
+<span class="fc bfc" id="L949" title="All 2 branches covered.">        else if (fieldClass == int.class) {</span>
+<span class="fc" id="L950">            result = value.toString();</span>
+        }
+<span class="fc bfc" id="L952" title="All 2 branches covered.">        else if (fieldClass == int[].class) {</span>
+<span class="fc" id="L953">            result = getIntArrayPropertyValue(value);</span>
+        }
+<span class="fc bfc" id="L955" title="All 2 branches covered.">        else if (fieldClass == double[].class) {</span>
+<span class="fc" id="L956">            result = removeSquareBrackets(Arrays.toString((double[]) value).replace(&quot;.0&quot;, &quot;&quot;));</span>
+<span class="pc bpc" id="L957" title="1 of 2 branches missed.">            if (result.isEmpty()) {</span>
+<span class="nc" id="L958">                result = CURLY_BRACKETS;</span>
+            }
+        }
+<span class="fc bfc" id="L961" title="All 2 branches covered.">        else if (fieldClass == String[].class) {</span>
+<span class="fc" id="L962">            result = getStringArrayPropertyValue(propertyName, value);</span>
+        }
+<span class="fc bfc" id="L964" title="All 4 branches covered.">        else if (fieldClass == URI.class || fieldClass == String.class) {</span>
+<span class="fc bfc" id="L965" title="All 2 branches covered.">            if (value != null) {</span>
+<span class="fc" id="L966">                result = '&quot;' + value.toString() + '&quot;';</span>
+            }
+        }
+<span class="fc bfc" id="L969" title="All 2 branches covered.">        else if (fieldClass == Pattern.class) {</span>
+<span class="fc bfc" id="L970" title="All 2 branches covered.">            if (value != null) {</span>
+<span class="fc" id="L971">                result = '&quot;' + value.toString().replace(&quot;\n&quot;, &quot;\\n&quot;).replace(&quot;\t&quot;, &quot;\\t&quot;)</span>
+<span class="fc" id="L972">                        .replace(&quot;\r&quot;, &quot;\\r&quot;).replace(&quot;\f&quot;, &quot;\\f&quot;) + '&quot;';</span>
+            }
+        }
+<span class="fc bfc" id="L975" title="All 2 branches covered.">        else if (fieldClass == Pattern[].class) {</span>
+<span class="fc" id="L976">            result = getPatternArrayPropertyValue(value);</span>
+        }
+<span class="fc bfc" id="L978" title="All 2 branches covered.">        else if (fieldClass.isEnum()) {</span>
+<span class="fc bfc" id="L979" title="All 2 branches covered.">            if (value != null) {</span>
+<span class="fc" id="L980">                result = value.toString().toLowerCase(Locale.ENGLISH);</span>
+            }
+        }
+<span class="pc bpc" id="L983" title="1 of 2 branches missed.">        else if (fieldClass == AccessModifierOption[].class) {</span>
+<span class="fc" id="L984">            result = removeSquareBrackets(Arrays.toString((Object[]) value));</span>
+        }
+        else {
+<span class="nc" id="L987">            final String message = String.format(Locale.ROOT,</span>
+<span class="nc" id="L988">                    &quot;Unknown property type: %s&quot;, fieldClass.getSimpleName());</span>
+<span class="nc" id="L989">            throw new MacroExecutionException(message);</span>
+        }
+
+<span class="fc bfc" id="L992" title="All 2 branches covered.">        if (result == null) {</span>
+<span class="fc" id="L993">            result = &quot;null&quot;;</span>
+        }
+
+<span class="fc" id="L996">        return result;</span>
+    }
+
+    /**
+     * Gets the name of the bean property's default value for the Pattern array class.
+     *
+     * @param fieldValue The bean property's value
+     * @return String form of property's default value
+     */
+    private static String getPatternArrayPropertyValue(Object fieldValue) {
+<span class="fc" id="L1006">        Object value = fieldValue;</span>
+<span class="fc bfc" id="L1007" title="All 2 branches covered.">        if (value instanceof Collection) {</span>
+<span class="fc" id="L1008">            final Collection&lt;?&gt; collection = (Collection&lt;?&gt;) value;</span>
+
+<span class="fc" id="L1010">            value = collection.stream()</span>
+<span class="fc" id="L1011">                    .map(Pattern.class::cast)</span>
+<span class="fc" id="L1012">                    .toArray(Pattern[]::new);</span>
+        }
+
+<span class="fc" id="L1015">        String result = &quot;&quot;;</span>
+<span class="pc bpc" id="L1016" title="1 of 4 branches missed.">        if (value != null &amp;&amp; Array.getLength(value) &gt; 0) {</span>
+<span class="fc" id="L1017">            result = removeSquareBrackets(</span>
+<span class="fc" id="L1018">                    Arrays.stream((Pattern[]) value)</span>
+<span class="fc" id="L1019">                    .map(Pattern::pattern)</span>
+<span class="fc" id="L1020">                    .collect(Collectors.joining(COMMA_SPACE)));</span>
+        }
+
+<span class="fc bfc" id="L1023" title="All 2 branches covered.">        if (result.isEmpty()) {</span>
+<span class="fc" id="L1024">            result = CURLY_BRACKETS;</span>
+        }
+<span class="fc" id="L1026">        return result;</span>
+    }
+
+    /**
+     * Removes square brackets [ and ] from the given string.
+     *
+     * @param value the string to remove square brackets from.
+     * @return the string without square brackets.
+     */
+    private static String removeSquareBrackets(String value) {
+<span class="fc" id="L1036">        return value</span>
+<span class="fc" id="L1037">                .replace(&quot;[&quot;, &quot;&quot;)</span>
+<span class="fc" id="L1038">                .replace(&quot;]&quot;, &quot;&quot;);</span>
+    }
+
+    /**
+     * Gets the name of the bean property's default value for the string array class.
+     *
+     * @param propertyName The bean property's name
+     * @param value The bean property's value
+     * @return String form of property's default value
+     */
+    private static String getStringArrayPropertyValue(String propertyName, Object value) {
+        String result;
+<span class="fc bfc" id="L1050" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L1051">            result = &quot;&quot;;</span>
+        }
+        else {
+<span class="fc" id="L1054">            try (Stream&lt;?&gt; valuesStream = getValuesStream(value)) {</span>
+<span class="fc" id="L1055">                result = valuesStream</span>
+<span class="fc" id="L1056">                    .map(String.class::cast)</span>
+<span class="fc" id="L1057">                    .sorted()</span>
+<span class="fc" id="L1058">                    .collect(Collectors.joining(COMMA_SPACE));</span>
+            }
+        }
+
+<span class="fc bfc" id="L1062" title="All 2 branches covered.">        if (result.isEmpty()) {</span>
+<span class="fc bfc" id="L1063" title="All 2 branches covered.">            if (FILE_EXTENSIONS.equals(propertyName)) {</span>
+<span class="fc" id="L1064">                result = &quot;all files&quot;;</span>
+            }
+            else {
+<span class="fc" id="L1067">                result = CURLY_BRACKETS;</span>
+            }
+        }
+<span class="fc" id="L1070">        return result;</span>
+    }
+
+    /**
+     * Generates a stream of values from the given value.
+     *
+     * @param value the value to generate the stream from.
+     * @return the stream of values.
+     */
+    private static Stream&lt;?&gt; getValuesStream(Object value) {
+        final Stream&lt;?&gt; valuesStream;
+<span class="fc bfc" id="L1081" title="All 2 branches covered.">        if (value instanceof Collection) {</span>
+<span class="fc" id="L1082">            final Collection&lt;?&gt; collection = (Collection&lt;?&gt;) value;</span>
+<span class="fc" id="L1083">            valuesStream = collection.stream();</span>
+<span class="fc" id="L1084">        }</span>
+        else {
+<span class="fc" id="L1086">            final Object[] array = (Object[]) value;</span>
+<span class="fc" id="L1087">            valuesStream = Arrays.stream(array);</span>
+        }
+<span class="fc" id="L1089">        return valuesStream;</span>
+    }
+
+    /**
+     * Returns the name of the bean property's default value for the int array class.
+     *
+     * @param value The bean property's value.
+     * @return String form of property's default value.
+     */
+    private static String getIntArrayPropertyValue(Object value) {
+<span class="fc" id="L1099">        try (IntStream stream = getIntStream(value)) {</span>
+<span class="fc" id="L1100">            String result = stream</span>
+<span class="fc" id="L1101">                    .mapToObj(TokenUtil::getTokenName)</span>
+<span class="fc" id="L1102">                    .sorted()</span>
+<span class="fc" id="L1103">                    .collect(Collectors.joining(COMMA_SPACE));</span>
+<span class="fc bfc" id="L1104" title="All 2 branches covered.">            if (result.isEmpty()) {</span>
+<span class="fc" id="L1105">                result = CURLY_BRACKETS;</span>
+            }
+<span class="fc" id="L1107">            return result;</span>
+        }
+    }
+
+    /**
+     * Get the int stream from the given value.
+     *
+     * @param value the value to get the int stream from.
+     * @return the int stream.
+     */
+    private static IntStream getIntStream(Object value) {
+        final IntStream stream;
+<span class="pc bpc" id="L1119" title="1 of 2 branches missed.">        if (value instanceof Collection) {</span>
+<span class="nc" id="L1120">            final Collection&lt;?&gt; collection = (Collection&lt;?&gt;) value;</span>
+<span class="nc" id="L1121">            stream = collection.stream()</span>
+<span class="nc" id="L1122">                    .mapToInt(int.class::cast);</span>
+<span class="nc" id="L1123">        }</span>
+<span class="fc bfc" id="L1124" title="All 2 branches covered.">        else if (value instanceof BitSet) {</span>
+<span class="fc" id="L1125">            stream = ((BitSet) value).stream();</span>
+        }
+        else {
+<span class="fc" id="L1128">            stream = Arrays.stream((int[]) value);</span>
+        }
+<span class="fc" id="L1130">        return stream;</span>
+    }
+
+    /**
+     * Gets the class of the given field.
+     *
+     * @param field the field to get the class of.
+     * @param propertyName the name of the property.
+     * @param moduleName the name of the module.
+     * @param instance the instance of the module.
+     * @return the class of the field.
+     * @throws MacroExecutionException if an error occurs during getting the class.
+     */
+    // -@cs[CyclomaticComplexity] Splitting would not make the code more readable
+    private static Class&lt;?&gt; getFieldClass(Field field, String propertyName,
+                                          String moduleName, Object instance)
+            throws MacroExecutionException {
+<span class="fc" id="L1147">        Class&lt;?&gt; result = null;</span>
+
+<span class="fc bfc" id="L1149" title="All 2 branches covered.">        if (field != null) {</span>
+<span class="fc" id="L1150">            result = field.getType();</span>
+        }
+<span class="fc bfc" id="L1152" title="All 2 branches covered.">        if (result == null) {</span>
+<span class="fc" id="L1153">            if (!PROPERTIES_ALLOWED_GET_TYPES_FROM_METHOD</span>
+<span class="pc bpc" id="L1154" title="1 of 2 branches missed.">                    .contains(moduleName + DOT + propertyName)) {</span>
+<span class="nc" id="L1155">                throw new MacroExecutionException(</span>
+                        &quot;Could not find field &quot; + propertyName + &quot; in class &quot; + moduleName);
+            }
+
+<span class="fc" id="L1159">            result = getPropertyClass(propertyName, instance);</span>
+        }
+<span class="fc bfc" id="L1161" title="All 6 branches covered.">        if (field != null &amp;&amp; (result == List.class || result == Set.class)) {</span>
+<span class="fc" id="L1162">            final ParameterizedType type = (ParameterizedType) field.getGenericType();</span>
+<span class="fc" id="L1163">            final Class&lt;?&gt; parameterClass = (Class&lt;?&gt;) type.getActualTypeArguments()[0];</span>
+
+<span class="pc bpc" id="L1165" title="1 of 2 branches missed.">            if (parameterClass == Integer.class) {</span>
+<span class="nc" id="L1166">                result = int[].class;</span>
+            }
+<span class="fc bfc" id="L1168" title="All 2 branches covered.">            else if (parameterClass == String.class) {</span>
+<span class="fc" id="L1169">                result = String[].class;</span>
+            }
+<span class="pc bpc" id="L1171" title="1 of 2 branches missed.">            else if (parameterClass == Pattern.class) {</span>
+<span class="fc" id="L1172">                result = Pattern[].class;</span>
+            }
+            else {
+<span class="nc" id="L1175">                final String message = &quot;Unknown parameterized type: &quot;</span>
+<span class="nc" id="L1176">                        + parameterClass.getSimpleName();</span>
+<span class="nc" id="L1177">                throw new MacroExecutionException(message);</span>
+            }
+<span class="fc" id="L1179">        }</span>
+<span class="fc bfc" id="L1180" title="All 2 branches covered.">        else if (result == BitSet.class) {</span>
+<span class="fc" id="L1181">            result = int[].class;</span>
+        }
+
+<span class="fc" id="L1184">        return result;</span>
+    }
+
+    /**
+     * Gets the class of the given java property.
+     *
+     * @param propertyName the name of the property.
+     * @param instance the instance of the module.
+     * @return the class of the java property.
+     * @throws MacroExecutionException if an error occurs during getting the class.
+     */
+    // -@cs[ForbidWildcardAsReturnType] Object is received as param, no prediction on type of field
+    public static Class&lt;?&gt; getPropertyClass(String propertyName, Object instance)
+            throws MacroExecutionException {
+        final Class&lt;?&gt; result;
+        try {
+<span class="fc" id="L1200">            final PropertyDescriptor descriptor = PropertyUtils.getPropertyDescriptor(instance,</span>
+                    propertyName);
+<span class="fc" id="L1202">            result = descriptor.getPropertyType();</span>
+        }
+<span class="nc" id="L1204">        catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException exc) {</span>
+<span class="nc" id="L1205">            throw new MacroExecutionException(exc.getMessage(), exc);</span>
+<span class="fc" id="L1206">        }</span>
+<span class="fc" id="L1207">        return result;</span>
+    }
+
+    /**
+     * Get the difference between two lists of tokens.
+     *
+     * @param tokens the list of tokens to remove from.
+     * @param subtractions the tokens to remove.
+     * @return the difference between the two lists.
+     */
+    public static List&lt;Integer&gt; getDifference(int[] tokens, int... subtractions) {
+<span class="fc" id="L1218">        final Set&lt;Integer&gt; subtractionsSet = Arrays.stream(subtractions)</span>
+<span class="fc" id="L1219">                .boxed()</span>
+<span class="fc" id="L1220">                .collect(Collectors.toSet());</span>
+<span class="fc" id="L1221">        return Arrays.stream(tokens)</span>
+<span class="fc" id="L1222">                .boxed()</span>
+<span class="fc bfc" id="L1223" title="All 2 branches covered.">                .filter(token -&gt; !subtractionsSet.contains(token))</span>
+<span class="fc" id="L1224">                .collect(Collectors.toList());</span>
+    }
+
+    /**
+     * Gets the field with the given name from the given class.
+     *
+     * @param fieldClass the class to get the field from.
+     * @param propertyName the name of the field.
+     * @return the field we are looking for.
+     */
+    public static Field getField(Class&lt;?&gt; fieldClass, String propertyName) {
+<span class="fc" id="L1235">        Field result = null;</span>
+<span class="fc" id="L1236">        Class&lt;?&gt; currentClass = fieldClass;</span>
+
+<span class="fc bfc" id="L1238" title="All 2 branches covered.">        while (!Object.class.equals(currentClass)) {</span>
+            try {
+<span class="fc" id="L1240">                result = currentClass.getDeclaredField(propertyName);</span>
+<span class="fc" id="L1241">                result.trySetAccessible();</span>
+<span class="fc" id="L1242">                break;</span>
+            }
+<span class="fc" id="L1244">            catch (NoSuchFieldException ignored) {</span>
+<span class="fc" id="L1245">                currentClass = currentClass.getSuperclass();</span>
+<span class="fc" id="L1246">            }</span>
+        }
+
+<span class="fc" id="L1249">        return result;</span>
+    }
+
+    /**
+     * Constructs string with relative link to the provided document.
+     *
+     * @param moduleName the name of the module.
+     * @param document the path of the document.
+     * @return relative link to the document.
+     * @throws MacroExecutionException if link to the document cannot be constructed.
+     */
+    public static String getLinkToDocument(String moduleName, String document)
+            throws MacroExecutionException {
+<span class="fc" id="L1262">        final Path templatePath = getTemplatePath(moduleName.replace(&quot;Check&quot;, &quot;&quot;));</span>
+<span class="pc bpc" id="L1263" title="1 of 2 branches missed.">        if (templatePath == null) {</span>
+<span class="nc" id="L1264">            throw new MacroExecutionException(</span>
+<span class="nc" id="L1265">                    String.format(Locale.ROOT,</span>
+                            &quot;Could not find template for %s&quot;, moduleName));
+        }
+<span class="fc" id="L1268">        final Path templatePathParent = templatePath.getParent();</span>
+<span class="pc bpc" id="L1269" title="1 of 2 branches missed.">        if (templatePathParent == null) {</span>
+<span class="nc" id="L1270">            throw new MacroExecutionException(&quot;Failed to get parent path for &quot; + templatePath);</span>
+        }
+<span class="fc" id="L1272">        return templatePathParent</span>
+<span class="fc" id="L1273">                .relativize(Paths.get(SRC, &quot;xdocs&quot;, document))</span>
+<span class="fc" id="L1274">                .toString()</span>
+<span class="fc" id="L1275">                .replace(&quot;.xml&quot;, &quot;.html&quot;)</span>
+<span class="fc" id="L1276">                .replace('\\', '/');</span>
+    }
+
+    /** Utility class for extracting description from a method's Javadoc. */
+    private static final class DescriptionExtractor {
+
+        /**
+         * Extracts the description from the javadoc detail node. Performs a DFS traversal on the
+         * detail node and extracts the text nodes.
+         *
+         * @param javadoc the Javadoc to extract the description from.
+         * @param moduleName the name of the module.
+         * @return the description of the setter.
+         * @throws MacroExecutionException if the description could not be extracted.
+         * @noinspection TooBroadScope
+         * @noinspectionreason TooBroadScope - complex nature of method requires large scope
+         */
+        // -@cs[NPathComplexity] Splitting would not make the code more readable
+        // -@cs[CyclomaticComplexity] Splitting would not make the code more readable.
+        private static String getDescriptionFromJavadoc(DetailNode javadoc, String moduleName)
+                throws MacroExecutionException {
+<span class="fc" id="L1297">            boolean isInCodeLiteral = false;</span>
+<span class="fc" id="L1298">            boolean isInHtmlElement = false;</span>
+<span class="fc" id="L1299">            boolean isInHrefAttribute = false;</span>
+<span class="fc" id="L1300">            final StringBuilder description = new StringBuilder(128);</span>
+<span class="fc" id="L1301">            final Deque&lt;DetailNode&gt; queue = new ArrayDeque&lt;&gt;();</span>
+<span class="fc" id="L1302">            final List&lt;DetailNode&gt; descriptionNodes = getDescriptionNodes(javadoc);</span>
+<span class="fc" id="L1303">            Lists.reverse(descriptionNodes).forEach(queue::push);</span>
+
+            // Perform DFS traversal on description nodes
+<span class="fc bfc" id="L1306" title="All 2 branches covered.">            while (!queue.isEmpty()) {</span>
+<span class="fc" id="L1307">                final DetailNode node = queue.pop();</span>
+<span class="fc" id="L1308">                Lists.reverse(Arrays.asList(node.getChildren())).forEach(queue::push);</span>
+
+<span class="fc bfc" id="L1310" title="All 2 branches covered.">                if (node.getType() == JavadocTokenTypes.HTML_TAG_NAME</span>
+<span class="fc bfc" id="L1311" title="All 2 branches covered.">                        &amp;&amp; &quot;href&quot;.equals(node.getText())) {</span>
+<span class="fc" id="L1312">                    isInHrefAttribute = true;</span>
+                }
+<span class="fc bfc" id="L1314" title="All 4 branches covered.">                if (isInHrefAttribute &amp;&amp; node.getType() == JavadocTokenTypes.ATTR_VALUE) {</span>
+<span class="fc" id="L1315">                    final String href = node.getText();</span>
+<span class="fc bfc" id="L1316" title="All 2 branches covered.">                    if (href.contains(CHECKSTYLE_ORG_URL)) {</span>
+<span class="fc" id="L1317">                        handleInternalLink(description, moduleName, href);</span>
+                    }
+                    else {
+<span class="fc" id="L1320">                        description.append(href);</span>
+                    }
+
+<span class="fc" id="L1323">                    isInHrefAttribute = false;</span>
+<span class="fc" id="L1324">                    continue;</span>
+                }
+<span class="fc bfc" id="L1326" title="All 2 branches covered.">                if (node.getType() == JavadocTokenTypes.HTML_ELEMENT) {</span>
+<span class="fc" id="L1327">                    isInHtmlElement = true;</span>
+                }
+<span class="fc bfc" id="L1329" title="All 2 branches covered.">                if (node.getType() == JavadocTokenTypes.END</span>
+<span class="fc bfc" id="L1330" title="All 2 branches covered.">                        &amp;&amp; node.getParent().getType() == JavadocTokenTypes.HTML_ELEMENT_END) {</span>
+<span class="fc" id="L1331">                    description.append(node.getText());</span>
+<span class="fc" id="L1332">                    isInHtmlElement = false;</span>
+                }
+<span class="fc bfc" id="L1334" title="All 4 branches covered.">                if (node.getType() == JavadocTokenTypes.TEXT</span>
+                        // If a node has children, its text is not part of the description
+<span class="fc bfc" id="L1336" title="All 2 branches covered.">                        || isInHtmlElement &amp;&amp; node.getChildren().length == 0</span>
+                            // Some HTML elements span multiple lines, so we avoid the asterisk
+<span class="fc bfc" id="L1338" title="All 2 branches covered.">                            &amp;&amp; node.getType() != JavadocTokenTypes.LEADING_ASTERISK) {</span>
+<span class="fc" id="L1339">                    description.append(node.getText());</span>
+                }
+<span class="fc bfc" id="L1341" title="All 2 branches covered.">                if (node.getType() == JavadocTokenTypes.CODE_LITERAL) {</span>
+<span class="fc" id="L1342">                    isInCodeLiteral = true;</span>
+<span class="fc" id="L1343">                    description.append(&quot;&lt;code&gt;&quot;);</span>
+                }
+<span class="fc bfc" id="L1345" title="All 2 branches covered.">                if (isInCodeLiteral</span>
+<span class="fc bfc" id="L1346" title="All 2 branches covered.">                        &amp;&amp; node.getType() == JavadocTokenTypes.JAVADOC_INLINE_TAG_END) {</span>
+<span class="fc" id="L1347">                    isInCodeLiteral = false;</span>
+<span class="fc" id="L1348">                    description.append(&quot;&lt;/code&gt;&quot;);</span>
+                }
+<span class="fc" id="L1350">            }</span>
+<span class="fc" id="L1351">            return description.toString().trim();</span>
+        }
+
+        /**
+         * Converts the href value to a relative link to the document and appends it to the
+         * description.
+         *
+         * @param description the description to append the relative link to.
+         * @param moduleName the name of the module.
+         * @param value the href value.
+         * @throws MacroExecutionException if the relative link could not be created.
+         */
+        private static void handleInternalLink(StringBuilder description,
+                                               String moduleName, String value)
+                throws MacroExecutionException {
+<span class="fc" id="L1366">            String href = value;</span>
+<span class="fc" id="L1367">            href = href.replace(CHECKSTYLE_ORG_URL, &quot;&quot;);</span>
+            // Remove first and last characters, they are always double quotes
+<span class="fc" id="L1369">            href = href.substring(1, href.length() - 1);</span>
+
+<span class="fc" id="L1371">            final String relativeHref = getLinkToDocument(moduleName, href);</span>
+<span class="fc" id="L1372">            final char doubleQuote = '\&quot;';</span>
+<span class="fc" id="L1373">            description.append(doubleQuote).append(relativeHref).append(doubleQuote);</span>
+<span class="fc" id="L1374">        }</span>
+
+        /**
+         * Extracts description nodes from javadoc.
+         *
+         * @param javadoc the Javadoc to extract the description from.
+         * @return the description nodes of the setter.
+         */
+        private static List&lt;DetailNode&gt; getDescriptionNodes(DetailNode javadoc) {
+<span class="fc" id="L1383">            final DetailNode[] children = javadoc.getChildren();</span>
+<span class="fc" id="L1384">            final List&lt;DetailNode&gt; descriptionNodes = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L1385" title="1 of 2 branches missed.">            for (final DetailNode child : children) {</span>
+<span class="fc bfc" id="L1386" title="All 2 branches covered.">                if (isEndOfDescription(child)) {</span>
+<span class="fc" id="L1387">                    break;</span>
+                }
+<span class="fc" id="L1389">                descriptionNodes.add(child);</span>
+            }
+<span class="fc" id="L1391">            return descriptionNodes;</span>
+        }
+
+        /**
+         * Determines if the given child index is the end of the description. The end of the
+         * description is defined as 4 consecutive nodes of type NEWLINE, LEADING_ASTERISK, NEWLINE,
+         * LEADING_ASTERISK. This is an asterisk that is alone on a line. Just like the one below
+         * this line.
+         *
+         * @param child the child to check.
+         * @return true if the given child index is the end of the description.
+         */
+        private static boolean isEndOfDescription(DetailNode child) {
+<span class="fc" id="L1404">            final DetailNode nextSibling = JavadocUtil.getNextSibling(child);</span>
+<span class="fc" id="L1405">            final DetailNode secondNextSibling = JavadocUtil.getNextSibling(nextSibling);</span>
+<span class="fc" id="L1406">            final DetailNode thirdNextSibling = JavadocUtil.getNextSibling(secondNextSibling);</span>
+
+<span class="fc bfc" id="L1408" title="All 2 branches covered.">            return child.getType() == JavadocTokenTypes.NEWLINE</span>
+<span class="pc bpc" id="L1409" title="1 of 2 branches missed.">                        &amp;&amp; nextSibling.getType() == JavadocTokenTypes.LEADING_ASTERISK</span>
+<span class="fc bfc" id="L1410" title="All 2 branches covered.">                        &amp;&amp; secondNextSibling.getType() == JavadocTokenTypes.NEWLINE</span>
+<span class="pc bpc" id="L1411" title="1 of 2 branches missed.">                        &amp;&amp; thirdNextSibling.getType() == JavadocTokenTypes.LEADING_ASTERISK;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

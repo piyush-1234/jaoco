@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StringLiteralEqualityCheck.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.checks.coding</a> &gt; <span class="el_source">StringLiteralEqualityCheck.java</span></div><h1>StringLiteralEqualityCheck.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.checks.coding;
+
+import com.puppycrawl.tools.checkstyle.StatelessCheck;
+import com.puppycrawl.tools.checkstyle.api.AbstractCheck;
+import com.puppycrawl.tools.checkstyle.api.DetailAST;
+import com.puppycrawl.tools.checkstyle.api.TokenTypes;
+
+/**
+ * &lt;p&gt;
+ * Checks that string literals are not used with &lt;code&gt;==&lt;/code&gt; or &lt;code&gt;&amp;#33;=&lt;/code&gt;.
+ * Since &lt;code&gt;==&lt;/code&gt; will compare the object references, not the actual value of the strings,
+ * &lt;code&gt;String.equals()&lt;/code&gt; should be used.
+ * More information can be found
+ * &lt;a href=&quot;https://stackoverflow.com/questions/513832/how-do-i-compare-strings-in-java/&quot;&gt;
+ * in this article&lt;/a&gt;.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Rationale: Novice Java programmers often use code like:
+ * &lt;/p&gt;
+ * &lt;pre&gt;
+ * if (x == &quot;something&quot;)
+ * &lt;/pre&gt;
+ * &lt;p&gt;
+ * when they mean
+ * &lt;/p&gt;
+ * &lt;pre&gt;
+ * if (&quot;something&quot;.equals(x))
+ * &lt;/pre&gt;
+ * &lt;p&gt;
+ * Parent is {@code com.puppycrawl.tools.checkstyle.TreeWalker}
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Violation Message Keys:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * {@code string.literal.equality}
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * @since 3.2
+ * @noinspection HtmlTagCanBeJavadocTag
+ * @noinspectionreason HtmlTagCanBeJavadocTag - encoded symbols were not decoded
+ *      when replaced with Javadoc tag
+ */
+@StatelessCheck
+<span class="fc" id="L66">public class StringLiteralEqualityCheck extends AbstractCheck {</span>
+
+    /**
+     * A key is pointing to the warning message text in &quot;messages.properties&quot;
+     * file.
+     */
+    public static final String MSG_KEY = &quot;string.literal.equality&quot;;
+
+    @Override
+    public int[] getDefaultTokens() {
+<span class="fc" id="L76">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+<span class="fc" id="L81">        return getRequiredTokens();</span>
+    }
+
+    @Override
+    public int[] getRequiredTokens() {
+<span class="fc" id="L86">        return new int[] {TokenTypes.EQUAL, TokenTypes.NOT_EQUAL};</span>
+    }
+
+    @Override
+    public void visitToken(DetailAST ast) {
+<span class="fc" id="L91">        final boolean hasStringLiteralChild = hasStringLiteralChild(ast);</span>
+
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        if (hasStringLiteralChild) {</span>
+<span class="fc" id="L94">            log(ast, MSG_KEY, ast.getText());</span>
+        }
+<span class="fc" id="L96">    }</span>
+
+    /**
+     * Checks whether string literal or text block literals are concatenated.
+     *
+     * @param ast ast
+     * @return {@code true} if string literal or text block literals are concatenated
+     */
+    private static boolean hasStringLiteralChild(DetailAST ast) {
+<span class="fc" id="L105">        DetailAST currentAst = ast;</span>
+<span class="fc" id="L106">        boolean result = false;</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        while (currentAst != null) {</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            if (currentAst.findFirstToken(TokenTypes.STRING_LITERAL) == null</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">                    &amp;&amp; currentAst.findFirstToken(TokenTypes.TEXT_BLOCK_LITERAL_BEGIN) == null) {</span>
+<span class="fc" id="L110">                currentAst = currentAst.findFirstToken(TokenTypes.PLUS);</span>
+            }
+            else {
+<span class="fc" id="L113">                result = true;</span>
+<span class="fc" id="L114">                break;</span>
+            }
+        }
+<span class="fc" id="L117">        return result;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

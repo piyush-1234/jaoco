@@ -1,0 +1,771 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FinalLocalVariableCheck.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">checkstyle</a> &gt; <a href="index.source.html" class="el_package">com.puppycrawl.tools.checkstyle.checks.coding</a> &gt; <span class="el_source">FinalLocalVariableCheck.java</span></div><h1>FinalLocalVariableCheck.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////////////////////
+// checkstyle: Checks Java source code and other text files for adherence to a set of rules.
+// Copyright (C) 2001-2024 the original author or authors.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+package com.puppycrawl.tools.checkstyle.checks.coding;
+
+import java.util.ArrayDeque;
+import java.util.BitSet;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Optional;
+
+import com.puppycrawl.tools.checkstyle.FileStatefulCheck;
+import com.puppycrawl.tools.checkstyle.api.AbstractCheck;
+import com.puppycrawl.tools.checkstyle.api.DetailAST;
+import com.puppycrawl.tools.checkstyle.api.TokenTypes;
+import com.puppycrawl.tools.checkstyle.utils.CheckUtil;
+import com.puppycrawl.tools.checkstyle.utils.ScopeUtil;
+import com.puppycrawl.tools.checkstyle.utils.TokenUtil;
+
+/**
+ * &lt;p&gt;
+ * Checks that local variables that never have their values changed are declared final.
+ * The check can be configured to also check that unchanged parameters are declared final.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * When configured to check parameters, the check ignores parameters of interface
+ * methods and abstract methods.
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * Property {@code validateEnhancedForLoopVariable} - Control whether to check
+ * &lt;a href=&quot;https://docs.oracle.com/javase/specs/jls/se11/html/jls-14.html#jls-14.14.2&quot;&gt;
+ * enhanced for-loop&lt;/a&gt; variable.
+ * Type is {@code boolean}.
+ * Default value is {@code false}.
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ * Property {@code tokens} - tokens to check
+ * Type is {@code java.lang.String[]}.
+ * Validation type is {@code tokenSet}.
+ * Default value is:
+ * &lt;a href=&quot;https://checkstyle.org/apidocs/com/puppycrawl/tools/checkstyle/api/TokenTypes.html#VARIABLE_DEF&quot;&gt;
+ * VARIABLE_DEF&lt;/a&gt;.
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Parent is {@code com.puppycrawl.tools.checkstyle.TreeWalker}
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Violation Message Keys:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;
+ * {@code final.variable}
+ * &lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * @since 3.2
+ */
+@FileStatefulCheck
+<span class="fc" id="L79">public class FinalLocalVariableCheck extends AbstractCheck {</span>
+
+    /**
+     * A key is pointing to the warning message text in &quot;messages.properties&quot;
+     * file.
+     */
+    public static final String MSG_KEY = &quot;final.variable&quot;;
+
+    /**
+     * Assign operator types.
+     */
+<span class="fc" id="L90">    private static final BitSet ASSIGN_OPERATOR_TYPES = TokenUtil.asBitSet(</span>
+        TokenTypes.POST_INC,
+        TokenTypes.POST_DEC,
+        TokenTypes.ASSIGN,
+        TokenTypes.PLUS_ASSIGN,
+        TokenTypes.MINUS_ASSIGN,
+        TokenTypes.STAR_ASSIGN,
+        TokenTypes.DIV_ASSIGN,
+        TokenTypes.MOD_ASSIGN,
+        TokenTypes.SR_ASSIGN,
+        TokenTypes.BSR_ASSIGN,
+        TokenTypes.SL_ASSIGN,
+        TokenTypes.BAND_ASSIGN,
+        TokenTypes.BXOR_ASSIGN,
+        TokenTypes.BOR_ASSIGN,
+        TokenTypes.INC,
+        TokenTypes.DEC
+    );
+
+    /**
+     * Loop types.
+     */
+<span class="fc" id="L112">    private static final BitSet LOOP_TYPES = TokenUtil.asBitSet(</span>
+        TokenTypes.LITERAL_FOR,
+        TokenTypes.LITERAL_WHILE,
+        TokenTypes.LITERAL_DO
+    );
+
+    /** Scope Deque. */
+<span class="fc" id="L119">    private final Deque&lt;ScopeData&gt; scopeStack = new ArrayDeque&lt;&gt;();</span>
+
+    /** Assigned variables of current scope. */
+<span class="fc" id="L122">    private final Deque&lt;Deque&lt;DetailAST&gt;&gt; currentScopeAssignedVariables =</span>
+            new ArrayDeque&lt;&gt;();
+
+    /**
+     * Control whether to check
+     * &lt;a href=&quot;https://docs.oracle.com/javase/specs/jls/se11/html/jls-14.html#jls-14.14.2&quot;&gt;
+     * enhanced for-loop&lt;/a&gt; variable.
+     */
+    private boolean validateEnhancedForLoopVariable;
+
+    /**
+     * Setter to control whether to check
+     * &lt;a href=&quot;https://docs.oracle.com/javase/specs/jls/se11/html/jls-14.html#jls-14.14.2&quot;&gt;
+     * enhanced for-loop&lt;/a&gt; variable.
+     *
+     * @param validateEnhancedForLoopVariable whether to check for-loop variable
+     * @since 6.5
+     */
+    public final void setValidateEnhancedForLoopVariable(boolean validateEnhancedForLoopVariable) {
+<span class="fc" id="L141">        this.validateEnhancedForLoopVariable = validateEnhancedForLoopVariable;</span>
+<span class="fc" id="L142">    }</span>
+
+    @Override
+    public int[] getRequiredTokens() {
+<span class="fc" id="L146">        return new int[] {</span>
+            TokenTypes.IDENT,
+            TokenTypes.CTOR_DEF,
+            TokenTypes.METHOD_DEF,
+            TokenTypes.SLIST,
+            TokenTypes.OBJBLOCK,
+            TokenTypes.LITERAL_BREAK,
+            TokenTypes.LITERAL_FOR,
+            TokenTypes.EXPR,
+        };
+    }
+
+    @Override
+    public int[] getDefaultTokens() {
+<span class="fc" id="L160">        return new int[] {</span>
+            TokenTypes.IDENT,
+            TokenTypes.CTOR_DEF,
+            TokenTypes.METHOD_DEF,
+            TokenTypes.SLIST,
+            TokenTypes.OBJBLOCK,
+            TokenTypes.LITERAL_BREAK,
+            TokenTypes.LITERAL_FOR,
+            TokenTypes.VARIABLE_DEF,
+            TokenTypes.EXPR,
+        };
+    }
+
+    @Override
+    public int[] getAcceptableTokens() {
+<span class="fc" id="L175">        return new int[] {</span>
+            TokenTypes.IDENT,
+            TokenTypes.CTOR_DEF,
+            TokenTypes.METHOD_DEF,
+            TokenTypes.SLIST,
+            TokenTypes.OBJBLOCK,
+            TokenTypes.LITERAL_BREAK,
+            TokenTypes.LITERAL_FOR,
+            TokenTypes.VARIABLE_DEF,
+            TokenTypes.PARAMETER_DEF,
+            TokenTypes.EXPR,
+        };
+    }
+
+    // -@cs[CyclomaticComplexity] The only optimization which can be done here is moving CASE-block
+    // expressions to separate methods, but that will not increase readability.
+    @Override
+    public void visitToken(DetailAST ast) {
+<span class="fc bfc" id="L193" title="All 8 branches covered.">        switch (ast.getType()) {</span>
+            case TokenTypes.OBJBLOCK:
+            case TokenTypes.METHOD_DEF:
+            case TokenTypes.CTOR_DEF:
+            case TokenTypes.LITERAL_FOR:
+<span class="fc" id="L198">                scopeStack.push(new ScopeData());</span>
+<span class="fc" id="L199">                break;</span>
+            case TokenTypes.SLIST:
+<span class="fc" id="L201">                currentScopeAssignedVariables.push(new ArrayDeque&lt;&gt;());</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">                if (ast.getParent().getType() != TokenTypes.CASE_GROUP</span>
+<span class="fc" id="L203">                    || ast.getParent().getParent().findFirstToken(TokenTypes.CASE_GROUP)</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">                    == ast.getParent()) {</span>
+<span class="fc" id="L205">                    storePrevScopeUninitializedVariableData();</span>
+<span class="fc" id="L206">                    scopeStack.push(new ScopeData());</span>
+                }
+                break;
+            case TokenTypes.PARAMETER_DEF:
+<span class="fc bfc" id="L210" title="All 2 branches covered.">                if (!isInLambda(ast)</span>
+<span class="fc" id="L211">                        &amp;&amp; ast.findFirstToken(TokenTypes.MODIFIERS)</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">                            .findFirstToken(TokenTypes.FINAL) == null</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">                        &amp;&amp; !isInAbstractOrNativeMethod(ast)</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">                        &amp;&amp; !ScopeUtil.isInInterfaceBlock(ast)</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">                        &amp;&amp; !isMultipleTypeCatch(ast)</span>
+<span class="fc bfc" id="L216" title="All 2 branches covered.">                        &amp;&amp; !CheckUtil.isReceiverParameter(ast)) {</span>
+<span class="fc" id="L217">                    insertParameter(ast);</span>
+                }
+                break;
+            case TokenTypes.VARIABLE_DEF:
+<span class="fc bfc" id="L221" title="All 2 branches covered.">                if (ast.getParent().getType() != TokenTypes.OBJBLOCK</span>
+<span class="fc" id="L222">                        &amp;&amp; ast.findFirstToken(TokenTypes.MODIFIERS)</span>
+<span class="fc bfc" id="L223" title="All 2 branches covered.">                            .findFirstToken(TokenTypes.FINAL) == null</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">                        &amp;&amp; !isVariableInForInit(ast)</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">                        &amp;&amp; shouldCheckEnhancedForLoopVariable(ast)) {</span>
+<span class="fc" id="L226">                    insertVariable(ast);</span>
+                }
+                break;
+            case TokenTypes.IDENT:
+<span class="fc" id="L230">                final int parentType = ast.getParent().getType();</span>
+<span class="fc bfc" id="L231" title="All 4 branches covered.">                if (isAssignOperator(parentType) &amp;&amp; isFirstChild(ast)) {</span>
+<span class="fc" id="L232">                    final Optional&lt;FinalVariableCandidate&gt; candidate = getFinalCandidate(ast);</span>
+<span class="fc bfc" id="L233" title="All 2 branches covered.">                    if (candidate.isPresent()) {</span>
+<span class="fc" id="L234">                        determineAssignmentConditions(ast, candidate.orElseThrow());</span>
+<span class="fc" id="L235">                        currentScopeAssignedVariables.peek().add(ast);</span>
+                    }
+<span class="fc" id="L237">                    removeFinalVariableCandidateFromStack(ast);</span>
+<span class="fc" id="L238">                }</span>
+                break;
+            case TokenTypes.LITERAL_BREAK:
+<span class="fc" id="L241">                scopeStack.peek().containsBreak = true;</span>
+<span class="fc" id="L242">                break;</span>
+            case TokenTypes.EXPR:
+                // Switch labeled expression has no slist
+<span class="fc bfc" id="L245" title="All 2 branches covered.">                if (ast.getParent().getType() == TokenTypes.SWITCH_RULE) {</span>
+<span class="fc" id="L246">                    storePrevScopeUninitializedVariableData();</span>
+                }
+                break;
+            default:
+<span class="fc" id="L250">                throw new IllegalStateException(&quot;Incorrect token type&quot;);</span>
+        }
+<span class="fc" id="L252">    }</span>
+
+    @Override
+    public void leaveToken(DetailAST ast) {
+<span class="fc" id="L256">        Map&lt;String, FinalVariableCandidate&gt; scope = null;</span>
+<span class="fc" id="L257">        final DetailAST parentAst = ast.getParent();</span>
+<span class="fc bfc" id="L258" title="All 4 branches covered.">        switch (ast.getType()) {</span>
+            case TokenTypes.OBJBLOCK:
+            case TokenTypes.CTOR_DEF:
+            case TokenTypes.METHOD_DEF:
+            case TokenTypes.LITERAL_FOR:
+<span class="fc" id="L263">                scope = scopeStack.pop().scope;</span>
+<span class="fc" id="L264">                break;</span>
+            case TokenTypes.EXPR:
+                // Switch labeled expression has no slist
+<span class="fc bfc" id="L267" title="All 2 branches covered.">                if (parentAst.getType() == TokenTypes.SWITCH_RULE</span>
+<span class="fc bfc" id="L268" title="All 2 branches covered.">                    &amp;&amp; shouldUpdateUninitializedVariables(parentAst)) {</span>
+<span class="fc" id="L269">                    updateAllUninitializedVariables();</span>
+                }
+                break;
+            case TokenTypes.SLIST:
+<span class="fc" id="L273">                boolean containsBreak = false;</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">                if (parentAst.getType() != TokenTypes.CASE_GROUP</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">                    || findLastCaseGroupWhichContainsSlist(parentAst.getParent()) == parentAst) {</span>
+<span class="fc" id="L276">                    containsBreak = scopeStack.peek().containsBreak;</span>
+<span class="fc" id="L277">                    scope = scopeStack.pop().scope;</span>
+                }
+<span class="fc bfc" id="L279" title="All 4 branches covered.">                if (containsBreak || shouldUpdateUninitializedVariables(parentAst)) {</span>
+<span class="fc" id="L280">                    updateAllUninitializedVariables();</span>
+                }
+<span class="fc" id="L282">                updateCurrentScopeAssignedVariables();</span>
+<span class="fc" id="L283">                break;</span>
+            default:
+                // do nothing
+        }
+<span class="fc bfc" id="L287" title="All 2 branches covered.">        if (scope != null) {</span>
+<span class="fc bfc" id="L288" title="All 2 branches covered.">            for (FinalVariableCandidate candidate : scope.values()) {</span>
+<span class="fc" id="L289">                final DetailAST ident = candidate.variableIdent;</span>
+<span class="fc" id="L290">                log(ident, MSG_KEY, ident.getText());</span>
+<span class="fc" id="L291">            }</span>
+        }
+<span class="fc" id="L293">    }</span>
+
+    /**
+     * Update assigned variables in a temporary stack.
+     */
+    private void updateCurrentScopeAssignedVariables() {
+        // -@cs[MoveVariableInsideIf] assignment value is a modification call, so it can't be moved
+<span class="fc" id="L300">        final Deque&lt;DetailAST&gt; poppedScopeAssignedVariableData =</span>
+<span class="fc" id="L301">                currentScopeAssignedVariables.pop();</span>
+<span class="fc" id="L302">        final Deque&lt;DetailAST&gt; currentScopeAssignedVariableData =</span>
+<span class="fc" id="L303">                currentScopeAssignedVariables.peek();</span>
+<span class="fc bfc" id="L304" title="All 2 branches covered.">        if (currentScopeAssignedVariableData != null) {</span>
+<span class="fc" id="L305">            currentScopeAssignedVariableData.addAll(poppedScopeAssignedVariableData);</span>
+        }
+<span class="fc" id="L307">    }</span>
+
+    /**
+     * Determines identifier assignment conditions (assigned or already assigned).
+     *
+     * @param ident identifier.
+     * @param candidate final local variable candidate.
+     */
+    private static void determineAssignmentConditions(DetailAST ident,
+                                                      FinalVariableCandidate candidate) {
+<span class="fc bfc" id="L317" title="All 2 branches covered.">        if (candidate.assigned) {</span>
+<span class="fc" id="L318">            final int[] blockTypes = {</span>
+                TokenTypes.LITERAL_ELSE,
+                TokenTypes.CASE_GROUP,
+                TokenTypes.SWITCH_RULE,
+            };
+<span class="fc bfc" id="L323" title="All 2 branches covered.">            if (!isInSpecificCodeBlocks(ident, blockTypes)) {</span>
+<span class="fc" id="L324">                candidate.alreadyAssigned = true;</span>
+            }
+<span class="fc" id="L326">        }</span>
+        else {
+<span class="fc" id="L328">            candidate.assigned = true;</span>
+        }
+<span class="fc" id="L330">    }</span>
+
+    /**
+     * Checks whether the scope of a node is restricted to a specific code blocks.
+     *
+     * @param node node.
+     * @param blockTypes int array of all block types to check.
+     * @return true if the scope of a node is restricted to specific code block types.
+     */
+    private static boolean isInSpecificCodeBlocks(DetailAST node, int... blockTypes) {
+<span class="fc" id="L340">        boolean returnValue = false;</span>
+<span class="fc bfc" id="L341" title="All 2 branches covered.">        for (int blockType : blockTypes) {</span>
+<span class="fc bfc" id="L342" title="All 2 branches covered.">            for (DetailAST token = node; token != null; token = token.getParent()) {</span>
+<span class="fc" id="L343">                final int type = token.getType();</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">                if (type == blockType) {</span>
+<span class="fc" id="L345">                    returnValue = true;</span>
+<span class="fc" id="L346">                    break;</span>
+                }
+            }
+        }
+<span class="fc" id="L350">        return returnValue;</span>
+    }
+
+    /**
+     * Gets final variable candidate for ast.
+     *
+     * @param ast ast.
+     * @return Optional of {@link FinalVariableCandidate} for ast from scopeStack.
+     */
+    private Optional&lt;FinalVariableCandidate&gt; getFinalCandidate(DetailAST ast) {
+<span class="fc" id="L360">        Optional&lt;FinalVariableCandidate&gt; result = Optional.empty();</span>
+<span class="fc" id="L361">        final Iterator&lt;ScopeData&gt; iterator = scopeStack.descendingIterator();</span>
+<span class="fc bfc" id="L362" title="All 4 branches covered.">        while (iterator.hasNext() &amp;&amp; result.isEmpty()) {</span>
+<span class="fc" id="L363">            final ScopeData scopeData = iterator.next();</span>
+<span class="fc" id="L364">            result = scopeData.findFinalVariableCandidateForAst(ast);</span>
+<span class="fc" id="L365">        }</span>
+<span class="fc" id="L366">        return result;</span>
+    }
+
+    /**
+     * Store un-initialized variables in a temporary stack for future use.
+     */
+    private void storePrevScopeUninitializedVariableData() {
+<span class="fc" id="L373">        final ScopeData scopeData = scopeStack.peek();</span>
+<span class="fc" id="L374">        final Deque&lt;DetailAST&gt; prevScopeUninitializedVariableData =</span>
+                new ArrayDeque&lt;&gt;();
+<span class="fc" id="L376">        scopeData.uninitializedVariables.forEach(prevScopeUninitializedVariableData::push);</span>
+<span class="fc" id="L377">        scopeData.prevScopeUninitializedVariables = prevScopeUninitializedVariableData;</span>
+<span class="fc" id="L378">    }</span>
+
+    /**
+     * Update current scope data uninitialized variable according to the whole scope data.
+     */
+    private void updateAllUninitializedVariables() {
+<span class="fc bfc" id="L384" title="All 2 branches covered.">        final boolean hasSomeScopes = !currentScopeAssignedVariables.isEmpty();</span>
+<span class="fc bfc" id="L385" title="All 2 branches covered.">        if (hasSomeScopes) {</span>
+<span class="fc" id="L386">            scopeStack.forEach(scopeData -&gt; {</span>
+<span class="fc" id="L387">                updateUninitializedVariables(scopeData.prevScopeUninitializedVariables);</span>
+<span class="fc" id="L388">            });</span>
+        }
+<span class="fc" id="L390">    }</span>
+
+    /**
+     * Update current scope data uninitialized variable according to the specific scope data.
+     *
+     * @param scopeUninitializedVariableData variable for specific stack of uninitialized variables
+     */
+    private void updateUninitializedVariables(Deque&lt;DetailAST&gt; scopeUninitializedVariableData) {
+<span class="fc" id="L398">        final Iterator&lt;DetailAST&gt; iterator = currentScopeAssignedVariables.peek().iterator();</span>
+<span class="fc bfc" id="L399" title="All 2 branches covered.">        while (iterator.hasNext()) {</span>
+<span class="fc" id="L400">            final DetailAST assignedVariable = iterator.next();</span>
+<span class="fc" id="L401">            boolean shouldRemove = false;</span>
+<span class="fc bfc" id="L402" title="All 2 branches covered.">            for (DetailAST variable : scopeUninitializedVariableData) {</span>
+<span class="fc bfc" id="L403" title="All 2 branches covered.">                for (ScopeData scopeData : scopeStack) {</span>
+<span class="fc" id="L404">                    final FinalVariableCandidate candidate =</span>
+<span class="fc" id="L405">                        scopeData.scope.get(variable.getText());</span>
+<span class="fc" id="L406">                    DetailAST storedVariable = null;</span>
+<span class="fc bfc" id="L407" title="All 2 branches covered.">                    if (candidate != null) {</span>
+<span class="fc" id="L408">                        storedVariable = candidate.variableIdent;</span>
+                    }
+<span class="fc bfc" id="L410" title="All 2 branches covered.">                    if (storedVariable != null</span>
+<span class="fc bfc" id="L411" title="All 2 branches covered.">                            &amp;&amp; isSameVariables(assignedVariable, variable)) {</span>
+<span class="fc" id="L412">                        scopeData.uninitializedVariables.push(variable);</span>
+<span class="fc" id="L413">                        shouldRemove = true;</span>
+                    }
+<span class="fc" id="L415">                }</span>
+<span class="fc" id="L416">            }</span>
+<span class="fc bfc" id="L417" title="All 2 branches covered.">            if (shouldRemove) {</span>
+<span class="fc" id="L418">                iterator.remove();</span>
+            }
+<span class="fc" id="L420">        }</span>
+<span class="fc" id="L421">    }</span>
+
+    /**
+     * If there is an {@code else} following or token is CASE_GROUP or
+     * SWITCH_RULE and there is another {@code case} following, then update the
+     * uninitialized variables.
+     *
+     * @param ast token to be checked
+     * @return true if should be updated, else false
+     */
+    private static boolean shouldUpdateUninitializedVariables(DetailAST ast) {
+<span class="fc bfc" id="L432" title="All 2 branches covered.">        return ast.getLastChild().getType() == TokenTypes.LITERAL_ELSE</span>
+<span class="fc bfc" id="L433" title="All 2 branches covered.">            || isCaseTokenWithAnotherCaseFollowing(ast);</span>
+    }
+
+    /**
+     * If token is CASE_GROUP or SWITCH_RULE and there is another {@code case} following.
+     *
+     * @param ast token to be checked
+     * @return true if token is CASE_GROUP or SWITCH_RULE and there is another {@code case}
+     *     following, else false
+     */
+    private static boolean isCaseTokenWithAnotherCaseFollowing(DetailAST ast) {
+<span class="fc" id="L444">        boolean result = false;</span>
+<span class="fc bfc" id="L445" title="All 2 branches covered.">        if (ast.getType() == TokenTypes.CASE_GROUP) {</span>
+<span class="fc bfc" id="L446" title="All 2 branches covered.">            result = findLastCaseGroupWhichContainsSlist(ast.getParent()) != ast;</span>
+        }
+<span class="fc bfc" id="L448" title="All 2 branches covered.">        else if (ast.getType() == TokenTypes.SWITCH_RULE) {</span>
+<span class="fc bfc" id="L449" title="All 2 branches covered.">            result = ast.getNextSibling().getType() == TokenTypes.SWITCH_RULE;</span>
+        }
+<span class="fc" id="L451">        return result;</span>
+    }
+
+    /**
+     * Returns the last token of type {@link TokenTypes#CASE_GROUP} which contains
+     * {@link TokenTypes#SLIST}.
+     *
+     * @param literalSwitchAst ast node of type {@link TokenTypes#LITERAL_SWITCH}
+     * @return the matching token, or null if no match
+     */
+    private static DetailAST findLastCaseGroupWhichContainsSlist(DetailAST literalSwitchAst) {
+<span class="fc" id="L462">        DetailAST returnValue = null;</span>
+<span class="fc bfc" id="L463" title="All 2 branches covered.">        for (DetailAST astIterator = literalSwitchAst.getFirstChild(); astIterator != null;</span>
+<span class="fc" id="L464">             astIterator = astIterator.getNextSibling()) {</span>
+<span class="fc bfc" id="L465" title="All 2 branches covered.">            if (astIterator.findFirstToken(TokenTypes.SLIST) != null) {</span>
+<span class="fc" id="L466">                returnValue = astIterator;</span>
+            }
+        }
+<span class="fc" id="L469">        return returnValue;</span>
+    }
+
+    /**
+     * Determines whether enhanced for-loop variable should be checked or not.
+     *
+     * @param ast The ast to compare.
+     * @return true if enhanced for-loop variable should be checked.
+     */
+    private boolean shouldCheckEnhancedForLoopVariable(DetailAST ast) {
+<span class="fc bfc" id="L479" title="All 2 branches covered.">        return validateEnhancedForLoopVariable</span>
+<span class="fc bfc" id="L480" title="All 2 branches covered.">                || ast.getParent().getType() != TokenTypes.FOR_EACH_CLAUSE;</span>
+    }
+
+    /**
+     * Insert a parameter at the topmost scope stack.
+     *
+     * @param ast the variable to insert.
+     */
+    private void insertParameter(DetailAST ast) {
+<span class="fc" id="L489">        final Map&lt;String, FinalVariableCandidate&gt; scope = scopeStack.peek().scope;</span>
+<span class="fc" id="L490">        final DetailAST astNode = ast.findFirstToken(TokenTypes.IDENT);</span>
+<span class="fc" id="L491">        scope.put(astNode.getText(), new FinalVariableCandidate(astNode));</span>
+<span class="fc" id="L492">    }</span>
+
+    /**
+     * Insert a variable at the topmost scope stack.
+     *
+     * @param ast the variable to insert.
+     */
+    private void insertVariable(DetailAST ast) {
+<span class="fc" id="L500">        final Map&lt;String, FinalVariableCandidate&gt; scope = scopeStack.peek().scope;</span>
+<span class="fc" id="L501">        final DetailAST astNode = ast.findFirstToken(TokenTypes.IDENT);</span>
+<span class="fc" id="L502">        final FinalVariableCandidate candidate = new FinalVariableCandidate(astNode);</span>
+        // for-each variables are implicitly assigned
+<span class="fc bfc" id="L504" title="All 2 branches covered.">        candidate.assigned = ast.getParent().getType() == TokenTypes.FOR_EACH_CLAUSE;</span>
+<span class="fc" id="L505">        scope.put(astNode.getText(), candidate);</span>
+<span class="fc bfc" id="L506" title="All 2 branches covered.">        if (!isInitialized(astNode)) {</span>
+<span class="fc" id="L507">            scopeStack.peek().uninitializedVariables.add(astNode);</span>
+        }
+<span class="fc" id="L509">    }</span>
+
+    /**
+     * Check if VARIABLE_DEF is initialized or not.
+     *
+     * @param ast VARIABLE_DEF to be checked
+     * @return true if initialized
+     */
+    private static boolean isInitialized(DetailAST ast) {
+<span class="fc bfc" id="L518" title="All 2 branches covered.">        return ast.getParent().getLastChild().getType() == TokenTypes.ASSIGN;</span>
+    }
+
+    /**
+     * Whether the ast is the first child of its parent.
+     *
+     * @param ast the ast to check.
+     * @return true if the ast is the first child of its parent.
+     */
+    private static boolean isFirstChild(DetailAST ast) {
+<span class="fc bfc" id="L528" title="All 2 branches covered.">        return ast.getPreviousSibling() == null;</span>
+    }
+
+    /**
+     * Removes the final variable candidate from the Stack.
+     *
+     * @param ast variable to remove.
+     */
+    private void removeFinalVariableCandidateFromStack(DetailAST ast) {
+<span class="fc" id="L537">        final Iterator&lt;ScopeData&gt; iterator = scopeStack.descendingIterator();</span>
+<span class="fc bfc" id="L538" title="All 2 branches covered.">        while (iterator.hasNext()) {</span>
+<span class="fc" id="L539">            final ScopeData scopeData = iterator.next();</span>
+<span class="fc" id="L540">            final Map&lt;String, FinalVariableCandidate&gt; scope = scopeData.scope;</span>
+<span class="fc" id="L541">            final FinalVariableCandidate candidate = scope.get(ast.getText());</span>
+<span class="fc" id="L542">            DetailAST storedVariable = null;</span>
+<span class="fc bfc" id="L543" title="All 2 branches covered.">            if (candidate != null) {</span>
+<span class="fc" id="L544">                storedVariable = candidate.variableIdent;</span>
+            }
+<span class="fc bfc" id="L546" title="All 4 branches covered.">            if (storedVariable != null &amp;&amp; isSameVariables(storedVariable, ast)) {</span>
+<span class="fc bfc" id="L547" title="All 2 branches covered.">                if (shouldRemoveFinalVariableCandidate(scopeData, ast)) {</span>
+<span class="fc" id="L548">                    scope.remove(ast.getText());</span>
+                }
+                break;
+            }
+<span class="fc" id="L552">        }</span>
+<span class="fc" id="L553">    }</span>
+
+    /**
+     * Check if given parameter definition is a multiple type catch.
+     *
+     * @param parameterDefAst parameter definition
+     * @return true if it is a multiple type catch, false otherwise
+     */
+    private static boolean isMultipleTypeCatch(DetailAST parameterDefAst) {
+<span class="fc" id="L562">        final DetailAST typeAst = parameterDefAst.findFirstToken(TokenTypes.TYPE);</span>
+<span class="fc bfc" id="L563" title="All 2 branches covered.">        return typeAst.findFirstToken(TokenTypes.BOR) != null;</span>
+    }
+
+    /**
+     * Whether the final variable candidate should be removed from the list of final local variable
+     * candidates.
+     *
+     * @param scopeData the scope data of the variable.
+     * @param ast the variable ast.
+     * @return true, if the variable should be removed.
+     */
+    private static boolean shouldRemoveFinalVariableCandidate(ScopeData scopeData, DetailAST ast) {
+<span class="fc" id="L575">        boolean shouldRemove = true;</span>
+<span class="fc bfc" id="L576" title="All 2 branches covered.">        for (DetailAST variable : scopeData.uninitializedVariables) {</span>
+<span class="fc bfc" id="L577" title="All 2 branches covered.">            if (variable.getText().equals(ast.getText())) {</span>
+                // if the variable is declared outside the loop and initialized inside
+                // the loop, then it cannot be declared final, as it can be initialized
+                // more than once in this case
+<span class="fc" id="L581">                final DetailAST currAstLoopAstParent = getParentLoop(ast);</span>
+<span class="fc" id="L582">                final DetailAST currVarLoopAstParent = getParentLoop(variable);</span>
+<span class="fc bfc" id="L583" title="All 2 branches covered.">                if (currAstLoopAstParent == currVarLoopAstParent) {</span>
+<span class="fc" id="L584">                    final FinalVariableCandidate candidate = scopeData.scope.get(ast.getText());</span>
+<span class="fc" id="L585">                    shouldRemove = candidate.alreadyAssigned;</span>
+                }
+<span class="fc" id="L587">                scopeData.uninitializedVariables.remove(variable);</span>
+<span class="fc" id="L588">                break;</span>
+            }
+<span class="fc" id="L590">        }</span>
+<span class="fc" id="L591">        return shouldRemove;</span>
+    }
+
+    /**
+     * Get the ast node of type {@link FinalVariableCandidate#LOOP_TYPES} that is the ancestor
+     * of the current ast node, if there is no such node, null is returned.
+     *
+     * @param ast ast node
+     * @return ast node of type {@link FinalVariableCandidate#LOOP_TYPES} that is the ancestor
+     *         of the current ast node, null if no such node exists
+     */
+    private static DetailAST getParentLoop(DetailAST ast) {
+<span class="fc" id="L603">        DetailAST parentLoop = ast;</span>
+<span class="fc bfc" id="L604" title="All 2 branches covered.">        while (parentLoop != null</span>
+<span class="fc bfc" id="L605" title="All 2 branches covered.">            &amp;&amp; !isLoopAst(parentLoop.getType())) {</span>
+<span class="fc" id="L606">            parentLoop = parentLoop.getParent();</span>
+        }
+<span class="fc" id="L608">        return parentLoop;</span>
+    }
+
+    /**
+     * Is Arithmetic operator.
+     *
+     * @param parentType token AST
+     * @return true is token type is in arithmetic operator
+     */
+    private static boolean isAssignOperator(int parentType) {
+<span class="fc" id="L618">        return ASSIGN_OPERATOR_TYPES.get(parentType);</span>
+    }
+
+    /**
+     * Checks if current variable is defined in
+     *  {@link TokenTypes#FOR_INIT for-loop init}, e.g.:
+     * &lt;p&gt;
+     * {@code
+     * for (int i = 0, j = 0; i &lt; j; i++) { . . . }
+     * }
+     * &lt;/p&gt;
+     * {@code i, j} are defined in {@link TokenTypes#FOR_INIT for-loop init}
+     *
+     * @param variableDef variable definition node.
+     * @return true if variable is defined in {@link TokenTypes#FOR_INIT for-loop init}
+     */
+    private static boolean isVariableInForInit(DetailAST variableDef) {
+<span class="fc bfc" id="L635" title="All 2 branches covered.">        return variableDef.getParent().getType() == TokenTypes.FOR_INIT;</span>
+    }
+
+    /**
+     * Determines whether an AST is a descendant of an abstract or native method.
+     *
+     * @param ast the AST to check.
+     * @return true if ast is a descendant of an abstract or native method.
+     */
+    private static boolean isInAbstractOrNativeMethod(DetailAST ast) {
+<span class="fc" id="L645">        boolean abstractOrNative = false;</span>
+<span class="fc" id="L646">        DetailAST currentAst = ast;</span>
+<span class="fc bfc" id="L647" title="All 4 branches covered.">        while (currentAst != null &amp;&amp; !abstractOrNative) {</span>
+<span class="fc bfc" id="L648" title="All 2 branches covered.">            if (currentAst.getType() == TokenTypes.METHOD_DEF) {</span>
+<span class="fc" id="L649">                final DetailAST modifiers =</span>
+<span class="fc" id="L650">                    currentAst.findFirstToken(TokenTypes.MODIFIERS);</span>
+<span class="fc bfc" id="L651" title="All 2 branches covered.">                abstractOrNative = modifiers.findFirstToken(TokenTypes.ABSTRACT) != null</span>
+<span class="fc bfc" id="L652" title="All 2 branches covered.">                        || modifiers.findFirstToken(TokenTypes.LITERAL_NATIVE) != null;</span>
+            }
+<span class="fc" id="L654">            currentAst = currentAst.getParent();</span>
+        }
+<span class="fc" id="L656">        return abstractOrNative;</span>
+    }
+
+    /**
+     * Check if current param is lambda's param.
+     *
+     * @param paramDef {@link TokenTypes#PARAMETER_DEF parameter def}.
+     * @return true if current param is lambda's param.
+     */
+    private static boolean isInLambda(DetailAST paramDef) {
+<span class="fc bfc" id="L666" title="All 2 branches covered.">        return paramDef.getParent().getParent().getType() == TokenTypes.LAMBDA;</span>
+    }
+
+    /**
+     * Find the Class, Constructor, Enum, Method, or Field in which it is defined.
+     *
+     * @param ast Variable for which we want to find the scope in which it is defined
+     * @return ast The Class or Constructor or Method in which it is defined.
+     */
+    private static DetailAST findFirstUpperNamedBlock(DetailAST ast) {
+<span class="fc" id="L676">        DetailAST astTraverse = ast;</span>
+<span class="fc bfc" id="L677" title="All 2 branches covered.">        while (!TokenUtil.isOfType(astTraverse, TokenTypes.METHOD_DEF, TokenTypes.CLASS_DEF,</span>
+                TokenTypes.ENUM_DEF, TokenTypes.CTOR_DEF, TokenTypes.COMPACT_CTOR_DEF)
+<span class="fc bfc" id="L679" title="All 2 branches covered.">                &amp;&amp; !ScopeUtil.isClassFieldDef(astTraverse)) {</span>
+<span class="fc" id="L680">            astTraverse = astTraverse.getParent();</span>
+        }
+<span class="fc" id="L682">        return astTraverse;</span>
+    }
+
+    /**
+     * Check if both the Variables are same.
+     *
+     * @param ast1 Variable to compare
+     * @param ast2 Variable to compare
+     * @return true if both the variables are same, otherwise false
+     */
+    private static boolean isSameVariables(DetailAST ast1, DetailAST ast2) {
+<span class="fc" id="L693">        final DetailAST classOrMethodOfAst1 =</span>
+<span class="fc" id="L694">            findFirstUpperNamedBlock(ast1);</span>
+<span class="fc" id="L695">        final DetailAST classOrMethodOfAst2 =</span>
+<span class="fc" id="L696">            findFirstUpperNamedBlock(ast2);</span>
+<span class="fc bfc" id="L697" title="All 4 branches covered.">        return classOrMethodOfAst1 == classOrMethodOfAst2 &amp;&amp; ast1.getText().equals(ast2.getText());</span>
+    }
+
+    /**
+     * Checks whether the ast is a loop.
+     *
+     * @param ast the ast to check.
+     * @return true if the ast is a loop.
+     */
+    private static boolean isLoopAst(int ast) {
+<span class="fc" id="L707">        return LOOP_TYPES.get(ast);</span>
+    }
+
+    /**
+     * Holder for the scope data.
+     */
+<span class="fc" id="L713">    private static final class ScopeData {</span>
+
+        /** Contains variable definitions. */
+<span class="fc" id="L716">        private final Map&lt;String, FinalVariableCandidate&gt; scope = new HashMap&lt;&gt;();</span>
+
+        /** Contains definitions of uninitialized variables. */
+<span class="fc" id="L719">        private final Deque&lt;DetailAST&gt; uninitializedVariables = new ArrayDeque&lt;&gt;();</span>
+
+        /** Contains definitions of previous scope uninitialized variables. */
+<span class="fc" id="L722">        private Deque&lt;DetailAST&gt; prevScopeUninitializedVariables = new ArrayDeque&lt;&gt;();</span>
+
+        /** Whether there is a {@code break} in the scope. */
+        private boolean containsBreak;
+
+        /**
+         * Searches for final local variable candidate for ast in the scope.
+         *
+         * @param ast ast.
+         * @return Optional of {@link FinalVariableCandidate}.
+         */
+        public Optional&lt;FinalVariableCandidate&gt; findFinalVariableCandidateForAst(DetailAST ast) {
+<span class="fc" id="L734">            Optional&lt;FinalVariableCandidate&gt; result = Optional.empty();</span>
+<span class="fc" id="L735">            DetailAST storedVariable = null;</span>
+<span class="fc" id="L736">            final Optional&lt;FinalVariableCandidate&gt; candidate =</span>
+<span class="fc" id="L737">                Optional.ofNullable(scope.get(ast.getText()));</span>
+<span class="fc bfc" id="L738" title="All 2 branches covered.">            if (candidate.isPresent()) {</span>
+<span class="fc" id="L739">                storedVariable = candidate.orElseThrow().variableIdent;</span>
+            }
+<span class="fc bfc" id="L741" title="All 4 branches covered.">            if (storedVariable != null &amp;&amp; isSameVariables(storedVariable, ast)) {</span>
+<span class="fc" id="L742">                result = candidate;</span>
+            }
+<span class="fc" id="L744">            return result;</span>
+        }
+
+    }
+
+    /** Represents information about final local variable candidate. */
+    private static final class FinalVariableCandidate {
+
+        /** Identifier token. */
+        private final DetailAST variableIdent;
+        /** Whether the variable is assigned. */
+        private boolean assigned;
+        /** Whether the variable is already assigned. */
+        private boolean alreadyAssigned;
+
+        /**
+         * Creates new instance.
+         *
+         * @param variableIdent variable identifier.
+         */
+<span class="fc" id="L764">        private FinalVariableCandidate(DetailAST variableIdent) {</span>
+<span class="fc" id="L765">            this.variableIdent = variableIdent;</span>
+<span class="fc" id="L766">        }</span>
+
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>
